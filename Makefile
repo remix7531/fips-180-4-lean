@@ -37,7 +37,8 @@ html: docs
 	pandoc docs/FIPS-PUB-180-4.md \
 		--lua-filter=support/toc-placement.lua \
 		--lua-filter=support/eqn-tag.lua \
-		--standalone --katex --highlight-style=tango \
+		--standalone --katex=https://cdn.jsdelivr.net/npm/katex@latest/dist/ \
+		--highlight-style=tango \
 		--syntax-definition=support/lean.xml \
 		-H support/style.html \
 		-o docs/FIPS-180-4.html
