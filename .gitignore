@@ -1,0 +1,11 @@
+# Nix
+.direnv/
+result
+
+# Lean
+.lake/
+lake-packages/
+
+# Generated docs
+docs/
+reference/

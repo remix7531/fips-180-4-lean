@@ -1,0 +1,178 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE language SYSTEM "language.dtd">
+<language name="Lean" section="Sources" extensions="*.lean" mimetype="text/x-lean"
+          version="1" kateversion="5.0" author="Generated" license="MIT">
+  <highlighting>
+    <list name="keywords">
+      <item>abbrev</item>
+      <item>axiom</item>
+      <item>class</item>
+      <item>def</item>
+      <item>deriving</item>
+      <item>do</item>
+      <item>else</item>
+      <item>end</item>
+      <item>example</item>
+      <item>export</item>
+      <item>extends</item>
+      <item>fun</item>
+      <item>if</item>
+      <item>import</item>
+      <item>in</item>
+      <item>inductive</item>
+      <item>instance</item>
+      <item>let</item>
+      <item>local</item>
+      <item>macro</item>
+      <item>match</item>
+      <item>mutual</item>
+      <item>namespace</item>
+      <item>noncomputable</item>
+      <item>notation</item>
+      <item>open</item>
+      <item>opaque</item>
+      <item>partial</item>
+      <item>private</item>
+      <item>protected</item>
+      <item>return</item>
+      <item>scoped</item>
+      <item>section</item>
+      <item>set_option</item>
+      <item>structure</item>
+      <item>syntax</item>
+      <item>theorem</item>
+      <item>unsafe</item>
+      <item>variable</item>
+      <item>where</item>
+      <item>with</item>
+    </list>
+    <list name="commands">
+      <item>#check</item>
+      <item>#eval</item>
+      <item>#print</item>
+      <item>#reduce</item>
+    </list>
+    <list name="sorts">
+      <item>Prop</item>
+      <item>Type</item>
+      <item>Sort</item>
+    </list>
+    <list name="types">
+      <item>Array</item>
+      <item>BitVec</item>
+      <item>Bool</item>
+      <item>Char</item>
+      <item>Float</item>
+      <item>Int</item>
+      <item>IO</item>
+      <item>List</item>
+      <item>Nat</item>
+      <item>Option</item>
+      <item>String</item>
+      <item>UInt8</item>
+      <item>UInt16</item>
+      <item>UInt32</item>
+      <item>UInt64</item>
+      <item>Unit</item>
+    </list>
+    <list name="literals">
+      <item>true</item>
+      <item>false</item>
+    </list>
+    <list name="tactics">
+      <item>apply</item>
+      <item>assumption</item>
+      <item>by</item>
+      <item>calc</item>
+      <item>cases</item>
+      <item>constructor</item>
+      <item>contradiction</item>
+      <item>exact</item>
+      <item>have</item>
+      <item>induction</item>
+      <item>intro</item>
+      <item>omega</item>
+      <item>rfl</item>
+      <item>rewrite</item>
+      <item>rw</item>
+      <item>show</item>
+      <item>simp</item>
+      <item>sorry</item>
+      <item>suffices</item>
+      <item>trivial</item>
+    </list>
+    <contexts>
+      <context attribute="Normal" lineEndContext="#stay" name="Normal">
+        <!-- Block comments (nestable) -->
+        <Detect2Chars attribute="Comment" context="BlockComment" char="/" char1="-" />
+        <!-- Line comments -->
+        <Detect2Chars attribute="Comment" context="LineComment" char="-" char1="-" />
+        <!-- Strings -->
+        <DetectChar attribute="String" context="String" char="&quot;" />
+        <!-- Char literals -->
+        <DetectChar attribute="Char" context="CharLiteral" char="'" />
+        <!-- Hex numbers -->
+        <RegExpr attribute="Hex" context="#stay" String="0[xX][0-9a-fA-F_]+" />
+        <!-- Binary numbers -->
+        <RegExpr attribute="Hex" context="#stay" String="0[bB][01_]+" />
+        <!-- Numbers -->
+        <RegExpr attribute="DecVal" context="#stay" String="\b[0-9][0-9_]*(\.[0-9_]+)?([eE][+-]?[0-9_]+)?\b" />
+        <!-- Keywords -->
+        <keyword attribute="Keyword" context="#stay" String="keywords" />
+        <!-- Commands -->
+        <keyword attribute="Command" context="#stay" String="commands" />
+        <!-- Sorts -->
+        <keyword attribute="Sort" context="#stay" String="sorts" />
+        <!-- Types -->
+        <keyword attribute="DataType" context="#stay" String="types" />
+        <!-- Literals -->
+        <keyword attribute="Literal" context="#stay" String="literals" />
+        <!-- Tactics -->
+        <keyword attribute="Tactic" context="#stay" String="tactics" />
+        <!-- Arrows and operators -->
+        <StringDetect attribute="Operator" context="#stay" String="=&gt;" />
+        <StringDetect attribute="Operator" context="#stay" String="-&gt;" />
+        <StringDetect attribute="Operator" context="#stay" String="&lt;-" />
+        <AnyChar attribute="Operator" context="#stay" String=":=|&amp;&gt;&lt;+*" />
+      </context>
+      <context attribute="Comment" lineEndContext="#pop" name="LineComment" />
+      <context attribute="Comment" lineEndContext="#stay" name="BlockComment">
+        <!-- Nested block comments -->
+        <Detect2Chars attribute="Comment" context="BlockComment" char="/" char1="-" />
+        <Detect2Chars attribute="Comment" context="#pop" char="-" char1="/" />
+      </context>
+      <context attribute="String" lineEndContext="#pop" name="String">
+        <Detect2Chars attribute="String" context="#stay" char="\" char1="&quot;" />
+        <Detect2Chars attribute="String" context="#stay" char="\" char1="\" />
+        <DetectChar attribute="String" context="#pop" char="&quot;" />
+      </context>
+      <context attribute="Char" lineEndContext="#pop" name="CharLiteral">
+        <Detect2Chars attribute="Char" context="#stay" char="\" char1="'" />
+        <Detect2Chars attribute="Char" context="#stay" char="\" char1="\" />
+        <DetectChar attribute="Char" context="#pop" char="'" />
+      </context>
+    </contexts>
+    <itemDatas>
+      <itemData name="Normal"   defStyleNum="dsNormal" />
+      <itemData name="Keyword"  defStyleNum="dsKeyword" />
+      <itemData name="Command"  defStyleNum="dsBuiltIn" />
+      <itemData name="Sort"     defStyleNum="dsKeyword" italic="true" />
+      <itemData name="DataType" defStyleNum="dsDataType" />
+      <itemData name="Literal"  defStyleNum="dsConstant" />
+      <itemData name="Tactic"   defStyleNum="dsControlFlow" />
+      <itemData name="DecVal"   defStyleNum="dsDecVal" />
+      <itemData name="Hex"      defStyleNum="dsBaseN" />
+      <itemData name="String"   defStyleNum="dsString" />
+      <itemData name="Char"     defStyleNum="dsChar" />
+      <itemData name="Comment"  defStyleNum="dsComment" />
+      <itemData name="Operator" defStyleNum="dsOperator" />
+    </itemDatas>
+  </highlighting>
+  <general>
+    <comments>
+      <comment name="singleLine" start="--" />
+      <comment name="multiLine" start="/-" end="-/" />
+    </comments>
+    <keywords casesensitive="1" />
+  </general>
+</language>
