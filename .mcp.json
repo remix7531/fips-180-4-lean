@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "lean-lsp": {
+      "command": "lean-lsp-mcp",
+      "args": [
+        "--lean-project-path",
+        "."
+      ]
+    }
+  }
+}

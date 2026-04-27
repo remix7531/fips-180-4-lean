@@ -46,7 +46,8 @@ and SHA-512/256.
 
 #### 5.3.6.1 SHA-512/224
 
-For SHA-512/224, the initial hash value, $H^{(0)}$, shall consist of the following eight 64-bit words, in hex:
+For SHA-512/224, the initial hash value, $H^{(0)}$, shall consist of the
+following eight 64-bit words, in hex:
 -/
 
 namespace SHA512 --#
@@ -74,7 +75,8 @@ end SHA512 --#
 /-!
 #### 5.3.6.2 SHA-512/256
 
-For SHA-512/256, the initial hash value, $H^{(0)}$, shall consist of the following eight 64-bit words, in hex:
+For SHA-512/256, the initial hash value, $H^{(0)}$, shall consist of the
+following eight 64-bit words, in hex:
 -/
 
 namespace SHA512 --#

@@ -1,0 +1,88 @@
+import equiv.SHA256.Bridge
+
+/-!
+# Bridge lemmas for the SHA-256 round functions
+
+The spec (`spec/Functions.lean`) defines six auxiliary functions on
+`BitVec 32` — `Ch`, `Maj`, `bigSigma0`, `bigSigma1`, `smallSigma0`,
+`smallSigma1` — that the compression function calls each round.  The
+implementation inlines the same operations, but on `UInt32`.
+
+For each spec function we prove a `@[simp]` lemma rewriting a call on
+*lifted* `UInt32` arguments to the lifting of the implementation's
+expression.  Together with the operator bridges from `Bridge.lean`,
+this lets the round-body equivalence in `Compress.lean` reduce to
+`simp`.
+
+Proof shape (for all six lemmas):
+1. Unfold the spec definition.
+2. `simp only` with the operator bridges from `Bridge.lean` to push
+   `toBitVec` to the leaves.
+3. `bv_decide` for the bitvector identity that remains
+   (the `rfl`-shaped `Ch` case skips this step).
+-/
+
+open SHS.Equiv.SHA256.Bridge
+
+open SHS.SHA256
+
+namespace SHS.Equiv.SHA256.Functions
+
+/-- `Ch x y z = (x ∧ y) ⊕ (¬x ∧ z)`, lifted. (FIPS 180-4 §4.1.2, eq. 4.2) -/
+@[simp] theorem Ch_toBitVec (x y z : UInt32) :
+    SHS.SHA256.Ch x.toBitVec y.toBitVec z.toBitVec =
+      ((x &&& y) ^^^ ((~~~ x) &&& z)).toBitVec := by
+  simp [SHS.SHA256.Ch]
+
+/-- `Maj x y z = (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z)`, lifted. (FIPS 180-4 §4.1.2, eq. 4.3) -/
+@[simp] theorem Maj_toBitVec (x y z : UInt32) :
+    SHS.SHA256.Maj x.toBitVec y.toBitVec z.toBitVec =
+      ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z)).toBitVec := by
+  simp only [SHS.SHA256.Maj, toBitVec_xor, toBitVec_and]
+  bv_decide
+
+/-- `Σ₀ x = ROTR² x ⊕ ROTR¹³ x ⊕ ROTR²² x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.4) -/
+@[simp] theorem bigSigma0_toBitVec (x : UInt32) :
+    SHS.SHA256.bigSigma0 x.toBitVec =
+      ((Impl.UInt32.rotr x 2) ^^^ (Impl.UInt32.rotr x 13)
+        ^^^ (Impl.UInt32.rotr x 22)).toBitVec := by
+  simp only [SHS.SHA256.bigSigma0, toBitVec_xor, toBitVec_rotr,
+    ROTR_eq_rotateRight _ _ (by decide : 2 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 13 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 22 < 32)]
+  bv_decide
+
+/-- `Σ₁ x = ROTR⁶ x ⊕ ROTR¹¹ x ⊕ ROTR²⁵ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.5) -/
+@[simp] theorem bigSigma1_toBitVec (x : UInt32) :
+    SHS.SHA256.bigSigma1 x.toBitVec =
+      ((Impl.UInt32.rotr x 6) ^^^ (Impl.UInt32.rotr x 11)
+        ^^^ (Impl.UInt32.rotr x 25)).toBitVec := by
+  simp only [SHS.SHA256.bigSigma1, toBitVec_xor, toBitVec_rotr,
+    ROTR_eq_rotateRight _ _ (by decide : 6 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 11 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 25 < 32)]
+  bv_decide
+
+/-- `σ₀ x = ROTR⁷ x ⊕ ROTR¹⁸ x ⊕ SHR³ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.6) -/
+@[simp] theorem smallSigma0_toBitVec (x : UInt32) :
+    SHS.SHA256.smallSigma0 x.toBitVec =
+      ((Impl.UInt32.rotr x 7) ^^^ (Impl.UInt32.rotr x 18) ^^^ (x >>> 3)).toBitVec := by
+  simp only [SHS.SHA256.smallSigma0, toBitVec_xor, toBitVec_rotr,
+    toBitVec_shr_of_lt _ _ (by decide : (3 : UInt32).toNat < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 7 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 18 < 32),
+    SHR_eq_shr]
+  bv_decide
+
+/-- `σ₁ x = ROTR¹⁷ x ⊕ ROTR¹⁹ x ⊕ SHR¹⁰ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.7) -/
+@[simp] theorem smallSigma1_toBitVec (x : UInt32) :
+    SHS.SHA256.smallSigma1 x.toBitVec =
+      ((Impl.UInt32.rotr x 17) ^^^ (Impl.UInt32.rotr x 19) ^^^ (x >>> 10)).toBitVec := by
+  simp only [SHS.SHA256.smallSigma1, toBitVec_xor, toBitVec_rotr,
+    toBitVec_shr_of_lt _ _ (by decide : (10 : UInt32).toNat < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 17 < 32),
+    ROTR_eq_rotateRight _ _ (by decide : 19 < 32),
+    SHR_eq_shr]
+  bv_decide
+
+end SHS.Equiv.SHA256.Functions

@@ -1,4 +1,4 @@
-.PHONY: all lean test fast-test docs html clean
+.PHONY: all lean test fast-test bench docs html clean
 
 all: lean
 
@@ -16,6 +16,11 @@ test:
 
 fast-test:
 	lake exe cavp --fast
+
+# --- Compare spec vs impl execution time on the full CAVP vector set ---
+
+bench:
+	bench/cavp.sh
 
 # --- Generate markdown from Lean via mdgen ---
 

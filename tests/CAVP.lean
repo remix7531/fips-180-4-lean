@@ -1,5 +1,6 @@
 import tests.Parser
 import spec
+import impl.SHA256
 
 set_option autoImplicit true
 
@@ -68,34 +69,87 @@ def runFile (alg : String) (path : System.FilePath) (sample : Option Nat := none
       IO.eprintln s!"FAIL {alg}: unknown algorithm"
   return (passed, failed)
 
+/-- Lowercase hex of a `Vector UInt8 n` (impl-side digest). -/
+def digestToHex (d : Vector UInt8 n) : String :=
+  let chars := "0123456789abcdef".toList
+  String.ofList (d.toList.flatMap fun b =>
+    [chars[b.toNat / 16]!, chars[b.toNat % 16]!])
+
+/-- Run the impl SHA-256 pipeline on a `.rsp` file.  The impl is byte-aligned,
+    so non-byte-multiple `Len` vectors are skipped (not failed). -/
+def runFileImpl256 (path : System.FilePath) (sample : Option Nat := none)
+    : IO (Nat × Nat) := do
+  let blocks ← RspParser.load path
+  let mut passed := 0
+  let mut failed := 0
+  let mut idx := 0
+  for block in blocks do
+    let i := idx
+    idx := idx + 1
+    if let some n := sample then
+      if (i * 2654435761) % n ≠ 0 then continue
+    let some lenStr := block.find? "Len" | continue
+    let some msgStr := block.find? "Msg" | continue
+    let some mdStr  := block.find? "MD"  | continue
+    let len := lenStr.toNat!
+    if len % 8 ≠ 0 then continue
+    let bytes :=
+      if len = 0 then ByteArray.empty
+      else (hexToBytes? msgStr).getD ByteArray.empty
+    let bytes := bytes.extract 0 (len / 8)
+    let actual := digestToHex (SHS.SHA256.Impl.sha256 bytes)
+    if actual = mdStr then
+      passed := passed + 1
+    else
+      failed := failed + 1
+      IO.eprintln s!"FAIL impl SHA256 Len={len} expected={mdStr} got={actual}"
+  return (passed, failed)
+
 end tests.CAVP
+
+def specCases (dir : String) : List (String × String) := [
+  ("SHA1",       s!"{dir}/SHA1ShortMsg.rsp"),
+  ("SHA1",       s!"{dir}/SHA1LongMsg.rsp"),
+  ("SHA224",     s!"{dir}/SHA224ShortMsg.rsp"),
+  ("SHA224",     s!"{dir}/SHA224LongMsg.rsp"),
+  ("SHA256",     s!"{dir}/SHA256ShortMsg.rsp"),
+  ("SHA256",     s!"{dir}/SHA256LongMsg.rsp"),
+  ("SHA384",     s!"{dir}/SHA384ShortMsg.rsp"),
+  ("SHA384",     s!"{dir}/SHA384LongMsg.rsp"),
+  ("SHA512",     s!"{dir}/SHA512ShortMsg.rsp"),
+  ("SHA512",     s!"{dir}/SHA512LongMsg.rsp"),
+  ("SHA512_224", s!"{dir}/SHA512_224ShortMsg.rsp"),
+  ("SHA512_224", s!"{dir}/SHA512_224LongMsg.rsp"),
+  ("SHA512_256", s!"{dir}/SHA512_256ShortMsg.rsp"),
+  ("SHA512_256", s!"{dir}/SHA512_256LongMsg.rsp"),
+]
+
+def implCases (dir : String) : List String :=
+  [s!"{dir}/SHA256ShortMsg.rsp", s!"{dir}/SHA256LongMsg.rsp"]
 
 def main (args : List String) : IO Unit := do
   -- `--fast` keeps roughly every 10th vector for quick iteration.
+  -- `--spec` runs only the spec pipeline; `--impl` runs only the impl
+  -- pipeline; default runs both.
   let sample : Option Nat := if args.contains "--fast" then some 10 else none
+  let onlySpec := args.contains "--spec"
+  let onlyImpl := args.contains "--impl"
+  let runSpec := !onlyImpl
+  let runImpl := !onlySpec
   let dir := "tests/vectors"
-  let cases : List (String × String) := [
-    ("SHA1",       s!"{dir}/SHA1ShortMsg.rsp"),
-    ("SHA1",       s!"{dir}/SHA1LongMsg.rsp"),
-    ("SHA224",     s!"{dir}/SHA224ShortMsg.rsp"),
-    ("SHA224",     s!"{dir}/SHA224LongMsg.rsp"),
-    ("SHA256",     s!"{dir}/SHA256ShortMsg.rsp"),
-    ("SHA256",     s!"{dir}/SHA256LongMsg.rsp"),
-    ("SHA384",     s!"{dir}/SHA384ShortMsg.rsp"),
-    ("SHA384",     s!"{dir}/SHA384LongMsg.rsp"),
-    ("SHA512",     s!"{dir}/SHA512ShortMsg.rsp"),
-    ("SHA512",     s!"{dir}/SHA512LongMsg.rsp"),
-    ("SHA512_224", s!"{dir}/SHA512_224ShortMsg.rsp"),
-    ("SHA512_224", s!"{dir}/SHA512_224LongMsg.rsp"),
-    ("SHA512_256", s!"{dir}/SHA512_256ShortMsg.rsp"),
-    ("SHA512_256", s!"{dir}/SHA512_256LongMsg.rsp"),
-  ]
   let mut totalPass := 0
   let mut totalFail := 0
-  for (alg, path) in cases do
-    let (p, f) ← tests.CAVP.runFile alg path sample
-    IO.println s!"{alg}: {p} passed, {f} failed  ({path})"
-    totalPass := totalPass + p
-    totalFail := totalFail + f
+  if runSpec then
+    for (alg, path) in specCases dir do
+      let (p, f) ← tests.CAVP.runFile alg path sample
+      IO.println s!"spec {alg}: {p} passed, {f} failed  ({path})"
+      totalPass := totalPass + p
+      totalFail := totalFail + f
+  if runImpl then
+    for path in implCases dir do
+      let (p, f) ← tests.CAVP.runFileImpl256 path sample
+      IO.println s!"impl SHA256: {p} passed, {f} failed  ({path})"
+      totalPass := totalPass + p
+      totalFail := totalFail + f
   IO.println s!"\nTotal: {totalPass} passed, {totalFail} failed"
   if totalFail > 0 then IO.Process.exit 1
