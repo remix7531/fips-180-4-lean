@@ -9,3 +9,6 @@ lake-packages/
 # Generated docs
 docs/
 reference/
+
+# Local notes
+TODO.md

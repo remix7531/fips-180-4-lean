@@ -30,11 +30,14 @@ def initVars (H : HashValue) : SpecVars :=
 /-- One round of the spec's compression loop, as a pure function:
 shifts `(a..h)` by one, with `a` and `e` updated by the standard
 `T1`/`T2` mixing.  This matches the body of the `for t in [0:64]`
-loop in `SHS.SHA256.compress`. -/
-def specRoundStep (W : Schedule) (t : Fin 64) (s : SpecVars) : SpecVars :=
+loop in `SHS.SHA256.compress`.
+
+Indexed by `Nat` rather than `Fin 64`: see `specScheduleStep` for the
+rationale. -/
+def specRoundStep (W : Schedule) (t : Nat) (s : SpecVars) : SpecVars :=
   let a := s[0]; let b := s[1]; let c := s[2]; let d := s[3]
   let e := s[4]; let f := s[5]; let g := s[6]; let h := s[7]
-  let T1 := h + SHS.SHA256.bigSigma1 e + SHS.SHA256.Ch e f g + SHS.SHA256.K[t.val]! + W[t.val]!
+  let T1 := h + SHS.SHA256.bigSigma1 e + SHS.SHA256.Ch e f g + SHS.SHA256.K[t]! + W[t]!
   let T2 := SHS.SHA256.bigSigma0 a + SHS.SHA256.Maj a b c
   #v[T1 + T2, a, b, c, d + T1, e, f, g]
 
@@ -46,78 +49,99 @@ def addH (H : HashValue) (s : SpecVars) : HashValue :=
 /-! ## Spec-tuple bridge
 
 When Lean desugars `Id.run do { mut a..h; for t in [0:64] do … }`, the
-eight `mut` variables become a nested right-associated `MProd`.  The
-abbreviations and lemmas below pass back and forth between that
-desugared 8-tuple and our `SpecVars` vector. -/
+eight `mut` variables become a *nested right-associated `MProd`* —
+NOT a custom structure.  The body destructures via `.fst` / `.snd.fst`
+/ `.snd.snd.fst` / … and rebuilds via the same anonymous constructor.
+The abbreviations and lemmas below mirror that exact shape so the
+proof can pattern-match the desugaring directly. -/
 
 /-- The 8-tuple of `BitVec 32` carrying the spec compress's working
-variables `(a, b, c, d, e, f, g, h)` while `Id.run do { mut … }` is
-desugared.  Backed by nested `MProd` (Lean's anonymous-constructor type
-used for desugaring multiple `mut` bindings), not `Prod`; this
-`structure` is reducible to that nesting via `unfold SpecVarsTuple`. -/
-structure SpecVarsTuple where
-  a : BitVec 32
-  b : BitVec 32
-  c : BitVec 32
-  d : BitVec 32
-  e : BitVec 32
-  f : BitVec 32
-  g : BitVec 32
-  h : BitVec 32
+variables `(a, b, c, d, e, f, g, h)`, matching the *exact* nested
+`MProd` shape produced by `Id.run do { mut a..h; for ... }` desugaring. -/
+abbrev SpecVarsTuple :=
+  MProd (BitVec 32) (MProd (BitVec 32) (MProd (BitVec 32) (MProd (BitVec 32)
+    (MProd (BitVec 32) (MProd (BitVec 32) (MProd (BitVec 32) (BitVec 32)))))))
 
 /-- Convert the desugared tuple state into a `SpecVars` vector. -/
 def tupleToVec (t : SpecVarsTuple) : SpecVars :=
-  #v[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h]
+  #v[t.fst, t.snd.fst, t.snd.snd.fst, t.snd.snd.snd.fst,
+     t.snd.snd.snd.snd.fst, t.snd.snd.snd.snd.snd.fst,
+     t.snd.snd.snd.snd.snd.snd.fst, t.snd.snd.snd.snd.snd.snd.snd]
 
-/-- The desugared tuple round step (matching the body of spec's
-`Id.run do` form, with the destructured `r.fst`/`r.snd…` pattern). -/
+/-- The desugared tuple round step matches the body of spec's
+`Id.run do` form: destructure `r` via `.fst`/`.snd.fst`/…, compute
+`T1`/`T2`, rotate, and rebuild via anonymous constructor. -/
 def tupleRoundStep (W : Schedule) (t : Nat) (r : SpecVarsTuple) : SpecVarsTuple :=
-  let T1 := r.h + SHS.SHA256.bigSigma1 r.e + SHS.SHA256.Ch r.e r.f r.g
-              + SHS.SHA256.K[t]! + W[t]!
-  let T2 := SHS.SHA256.bigSigma0 r.a + SHS.SHA256.Maj r.a r.b r.c
-  ⟨T1 + T2, r.a, r.b, r.c, r.d + T1, r.e, r.f, r.g⟩
+  let a := r.fst
+  let x := r.snd
+  let b := x.fst
+  let x := x.snd
+  let c := x.fst
+  let x := x.snd
+  let d := x.fst
+  let x := x.snd
+  let e := x.fst
+  let x := x.snd
+  let f := x.fst
+  let x := x.snd
+  let g := x.fst
+  let h := x.snd
+  let T1 := h + SHS.SHA256.bigSigma1 e + SHS.SHA256.Ch e f g + SHS.SHA256.K[t]! + W[t]!
+  let T2 := SHS.SHA256.bigSigma0 a + SHS.SHA256.Maj a b c
+  ⟨T1 + T2, a, b, c, d + T1, e, f, g⟩
 
 /-- The tuple round step matches `specRoundStep` once both states are
 viewed through `tupleToVec`. -/
 @[simp] theorem tupleToVec_tupleRoundStep (W : Schedule) (t : Fin 64) (r : SpecVarsTuple) :
-    tupleToVec (tupleRoundStep W t.val r) = specRoundStep W t (tupleToVec r) := by
+    tupleToVec (tupleRoundStep W t.val r) = specRoundStep W t.val (tupleToVec r) := by
   rfl
 
 /-- The initial tuple state matches `initVars H` through `tupleToVec`. -/
 @[simp] theorem tupleToVec_init (H : HashValue) :
-    tupleToVec ⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ = initVars H := by
+    tupleToVec (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple) =
+      initVars H := by
   unfold initVars tupleToVec; rfl
 
 /-- The post-loop tuple-projection array matches `addH H` through `tupleToVec`. -/
 @[simp] theorem addH_tupleToVec (H : HashValue) (r : SpecVarsTuple) :
     addH H (tupleToVec r) =
-      #[r.a + H[0]!, r.b + H[1]!, r.c + H[2]!, r.d + H[3]!,
-        r.e + H[4]!, r.f + H[5]!, r.g + H[6]!, r.h + H[7]!] := by
+      #[r.fst + H[0]!, r.snd.fst + H[1]!, r.snd.snd.fst + H[2]!,
+        r.snd.snd.snd.fst + H[3]!, r.snd.snd.snd.snd.fst + H[4]!,
+        r.snd.snd.snd.snd.snd.fst + H[5]!, r.snd.snd.snd.snd.snd.snd.fst + H[6]!,
+        r.snd.snd.snd.snd.snd.snd.snd + H[7]!] := by
   rfl
 
 /-- Spec `compress` in **sequential** pure-foldl form: precompute the
 full schedule, then fold the round body over the 64 rounds. -/
 def specCompressSeq (H : HashValue) (M : Block) : HashValue :=
-  addH H (Fin.foldl 64 (fun s t => specRoundStep (SHS.SHA256.schedule M) t s) (initVars H))
+  addH H (Fin.foldl 64
+    (fun s (t : Fin 64) => specRoundStep (SHS.SHA256.schedule M) t.val s) (initVars H))
 
 /-- The spec's `compress` equals its sequential pure-foldl form
 (`specCompressSeq`).  Downstream consumers reason against
-`specCompressSeq` instead of the `Id.run do` form. -/
+`specCompressSeq` instead of the `Id.run do` form.
+
+After unfolding both sides, LHS is the literal `Id.run do { mut a..h;
+for t in [0:64] do … }` desugared into a let-chain wrapping `(forIn
+[0:64] ⟨a..h⟩ stepBody).run` followed by an extract-and-add pattern.
+The `tupleRoundStep` definition above mirrors the desugaring's `stepBody`
+exactly, so `forIn_id_eq_Fin_foldl` lifts the inner `forIn` to a
+`Fin.foldl` over `tupleRoundStep`; `tupleToVec_*` simp-lemmas then
+bridge to `addH H (Fin.foldl 64 specRoundStep (initVars H))`. -/
 theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
     SHS.SHA256.compress H M = specCompressSeq H M := by
-  unfold specCompressSeq
-  -- Spec's `Id.run do { mut a..h; for t in [0:64] do …; return #[…] }` is
-  -- *definitionally* `addH H (tupleToVec (Id.run (forIn …)))`; the
-  -- `pure unit; pure (yield …)` desugaring residue is absorbed by `rfl`.
+  unfold specCompressSeq SHS.SHA256.compress
   show addH H (tupleToVec
         (Id.run (forIn [0:64]
           (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple)
           (fun t r => pure (ForInStep.yield
             (tupleRoundStep (SHS.SHA256.schedule M) t r)))))) = _
-  rw [forIn_id_eq_Fin_foldl 64]
+  rw [forIn_id_eq_Fin_foldl 64
+        (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple)
+        (tupleRoundStep (SHS.SHA256.schedule M))]
   rw [fin_foldl_transport 64
         (fun r t => tupleRoundStep (SHS.SHA256.schedule M) t.val r)
-        (fun s t => specRoundStep (SHS.SHA256.schedule M) t s)
+        (fun s (t : Fin 64) => specRoundStep (SHS.SHA256.schedule M) t.val s)
         tupleToVec
         ⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩
         (fun a i => tupleToVec_tupleRoundStep _ i a)]

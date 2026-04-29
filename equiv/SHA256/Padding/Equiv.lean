@@ -41,7 +41,7 @@ theorem implSha256Refactored_eq_extractDigest (data : ByteArray) :
       extractDigest ((implPaddedBlocks data).foldl
         (fun s b => Impl.compress s (Impl.toU32s b)) Impl.H256_256) := rfl
 
-private theorem impl_sha256_eq_extract (data : ByteArray) :
+private theorem impl_sha256_eq_extract (data : ByteArray) (hsize : data.size < 2 ^ 61) :
     Impl.sha256 data = extractDigest (
       let blocks := data.size / 64
       let remaining := data.size % 64
@@ -63,14 +63,18 @@ private theorem impl_sha256_eq_extract (data : ByteArray) :
         if i.val < 56 then finalBlockB[i]
         else ((totalBits >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8
       Impl.compress state (Impl.toU32s finalBlockC)) := by
+  unfold Impl.sha256
+  rw [if_neg (Nat.not_le.mpr hsize)]
   rfl
 
 /-- `Impl.sha256` agrees with the cleaner block-list refactoring.
 The `< 56` / `≥ 56` case-split mirrors `Impl.sha256`'s own conditional
-emission of one vs two final blocks. -/
-theorem impl_sha256_eq_refactored (data : ByteArray) :
+emission of one vs two final blocks.  The `data.size < 2 ^ 61`
+hypothesis discharges the runtime size guard at the top of `Impl.sha256`
+(see FIPS 180-4 §5.1.1). -/
+theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61) :
     Impl.sha256 data = implSha256Refactored data := by
-  rw [impl_sha256_eq_extract]
+  rw [impl_sha256_eq_extract _ hsize]
   show _ = extractDigest _
   apply congrArg extractDigest
   rw [implPaddedBlocks_foldl]

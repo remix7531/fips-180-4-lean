@@ -39,7 +39,7 @@ namespace SHS.Equiv.SHA256.Functions
     SHS.SHA256.Maj x.toBitVec y.toBitVec z.toBitVec =
       ((x &&& y) ^^^ (x &&& z) ^^^ (y &&& z)).toBitVec := by
   simp only [SHS.SHA256.Maj, toBitVec_xor, toBitVec_and]
-  bv_decide
+  ac_rfl
 
 /-- `Σ₀ x = ROTR² x ⊕ ROTR¹³ x ⊕ ROTR²² x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.4) -/
 @[simp] theorem bigSigma0_toBitVec (x : UInt32) :
@@ -49,8 +49,11 @@ namespace SHS.Equiv.SHA256.Functions
   simp only [SHS.SHA256.bigSigma0, toBitVec_xor, toBitVec_rotr,
     ROTR_eq_rotateRight _ _ (by decide : 2 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 13 < 32),
-    ROTR_eq_rotateRight _ _ (by decide : 22 < 32)]
-  bv_decide
+    ROTR_eq_rotateRight _ _ (by decide : 22 < 32),
+    show (2 : UInt32).toNat = 2 from rfl,
+    show (13 : UInt32).toNat = 13 from rfl,
+    show (22 : UInt32).toNat = 22 from rfl]
+  ac_rfl
 
 /-- `Σ₁ x = ROTR⁶ x ⊕ ROTR¹¹ x ⊕ ROTR²⁵ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.5) -/
 @[simp] theorem bigSigma1_toBitVec (x : UInt32) :
@@ -60,8 +63,11 @@ namespace SHS.Equiv.SHA256.Functions
   simp only [SHS.SHA256.bigSigma1, toBitVec_xor, toBitVec_rotr,
     ROTR_eq_rotateRight _ _ (by decide : 6 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 11 < 32),
-    ROTR_eq_rotateRight _ _ (by decide : 25 < 32)]
-  bv_decide
+    ROTR_eq_rotateRight _ _ (by decide : 25 < 32),
+    show (6 : UInt32).toNat = 6 from rfl,
+    show (11 : UInt32).toNat = 11 from rfl,
+    show (25 : UInt32).toNat = 25 from rfl]
+  ac_rfl
 
 /-- `σ₀ x = ROTR⁷ x ⊕ ROTR¹⁸ x ⊕ SHR³ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.6) -/
 @[simp] theorem smallSigma0_toBitVec (x : UInt32) :
@@ -71,8 +77,11 @@ namespace SHS.Equiv.SHA256.Functions
     toBitVec_shr_of_lt _ _ (by decide : (3 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 7 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 18 < 32),
-    SHR_eq_shr]
-  bv_decide
+    SHR_eq_shr,
+    show (3 : UInt32).toNat = 3 from rfl,
+    show (7 : UInt32).toNat = 7 from rfl,
+    show (18 : UInt32).toNat = 18 from rfl]
+  ac_rfl
 
 /-- `σ₁ x = ROTR¹⁷ x ⊕ ROTR¹⁹ x ⊕ SHR¹⁰ x`, lifted. (FIPS 180-4 §4.1.2, eq. 4.7) -/
 @[simp] theorem smallSigma1_toBitVec (x : UInt32) :
@@ -82,7 +91,10 @@ namespace SHS.Equiv.SHA256.Functions
     toBitVec_shr_of_lt _ _ (by decide : (10 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 17 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 19 < 32),
-    SHR_eq_shr]
-  bv_decide
+    SHR_eq_shr,
+    show (10 : UInt32).toNat = 10 from rfl,
+    show (17 : UInt32).toNat = 17 from rfl,
+    show (19 : UInt32).toNat = 19 from rfl]
+  ac_rfl
 
 end SHS.Equiv.SHA256.Functions

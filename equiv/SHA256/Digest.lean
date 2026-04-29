@@ -34,32 +34,22 @@ def extractDigest (state : Impl.State) : Vector UInt8 32 :=
     ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
 
 /-- 4-byte big-endian decomposition of `w : UInt32`, MSB-first bits, fed
-to `Word.fromBits` at width 256, equals `w.toBitVec.zeroExtend 256`. -/
+to `Word.fromBits` at width 256, equals `w.toBitVec.zeroExtend 256`.
+Same shape as `ToU32s.fromBits_byteToBits` at width 256. -/
 private theorem fromBits_4bytes_BE_256 (w : UInt32) :
     SHS.Word.fromBits (n := 256)
       (((List.range 4).map fun b =>
         ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits)
     = (w.toBitVec).zeroExtend 256 := by
-  show SHS.Word.fromBits (n := 256)
-    (([((w >>> (UInt32.ofNat ((3 - 0) * 8))) &&& 0xff).toUInt8,
-       ((w >>> (UInt32.ofNat ((3 - 1) * 8))) &&& 0xff).toUInt8,
-       ((w >>> (UInt32.ofNat ((3 - 2) * 8))) &&& 0xff).toUInt8,
-       ((w >>> (UInt32.ofNat ((3 - 3) * 8))) &&& 0xff).toUInt8]).flatMap byteToBits)
-    = (w.toBitVec).zeroExtend 256
-  have e0 : UInt32.ofNat ((3 - 0) * 8) = 24 := by decide
-  have e1 : UInt32.ofNat ((3 - 1) * 8) = 16 := by decide
-  have e2 : UInt32.ofNat ((3 - 2) * 8) = 8 := by decide
-  have e3 : UInt32.ofNat ((3 - 3) * 8) = 0 := by decide
-  rw [e0, e1, e2, e3]
-  unfold byteToBits
-  simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil,
+  unfold byteToBits SHS.Word.fromBits
+  simp only [show UInt32.ofNat ((3 - 0) * 8) = 24 from rfl,
+    show UInt32.ofNat ((3 - 1) * 8) = 16 from rfl,
+    show UInt32.ofNat ((3 - 2) * 8) = 8 from rfl,
+    show UInt32.ofNat ((3 - 3) * 8) = 0 from rfl,
     List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.map_cons, List.map_nil]
-  unfold SHS.Word.fromBits
-  simp only [List.foldl]
-  have h : ∀ (b : UInt8) i, b.toNat.testBit i = b.toBitVec.getLsbD i := fun b i => by
-    rw [show b.toNat = b.toBitVec.toNat from rfl, BitVec.testBit_toNat]
-  simp only [h]
+    List.nil_append, List.cons_append, List.append_nil, List.flatMap_cons,
+    List.flatMap_nil, List.map_cons, List.map_nil, List.foldl,
+    UInt8.toNat_testBit_eq_getLsbD]
   bv_decide
 
 private theorem flatMap_byteToBits_length (l : List UInt8) :

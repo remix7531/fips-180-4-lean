@@ -94,8 +94,18 @@ def compress (state : State) (block : Block) : State :=
 
 /-! ## §6.2  Top-level `sha256` -/
 
-/-- Streaming-padded SHA-256 of `data`. -/
+/-- Streaming-padded SHA-256 of `data`.
+
+FIPS 180-4 §5.1.1 caps the input bit-length at `2 ^ 64 - 1`, so byte-oriented
+SHA-256 is only defined for `data.size < 2 ^ 61`.  Beyond that bound,
+`data.size.toUInt64 <<< 3` would silently wrap and produce a wrong digest.
+We refuse with `panic!` instead.  The verified-correctness theorem
+`SHS.Equiv.SHA256.sha256_correct` carries `data.size < 2 ^ 61` as a
+precondition, so the panic branch is unreachable inside the verified region. -/
 def sha256 (data : ByteArray) : Vector UInt8 32 :=
+  if 2 ^ 61 ≤ data.size then
+    panic! s!"SHS.SHA256.Impl.sha256: input size {data.size} bytes exceeds FIPS 180-4 §5.1.1 limit (2^61 bytes)"
+  else
   let blocks    := data.size / 64
   let remaining := data.size % 64
   let totalBits : UInt64 := data.size.toUInt64 <<< 3

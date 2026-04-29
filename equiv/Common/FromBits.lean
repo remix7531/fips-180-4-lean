@@ -32,7 +32,6 @@ theorem fromBits_append_same_width {N : Nat} (l r : List Bool) :
     SHS.Word.fromBits (n := N) (l ++ r) =
       (SHS.Word.fromBits (n := N) l) <<< r.length ||| SHS.Word.fromBits (n := N) r := by
   show (l ++ r).foldl _ 0 = _
-  rw [List.foldl_append, fromBits_foldl_init]
-  rfl
+  rw [List.foldl_append, fromBits_foldl_init]; rfl
 
 end SHS.Equiv.FromBits

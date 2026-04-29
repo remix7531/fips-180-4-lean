@@ -13,23 +13,18 @@ theorem array_foldl_ofFn_eq_fin_foldl {α β : Type*} (n : Nat) (g : Fin n → �
     (f : β → α → β) (init : β) :
     (Array.ofFn g).foldl f init = Fin.foldl n (fun b i => f b (g i)) init := by
   induction n generalizing init with
-  | zero => simp [Fin.foldl_zero]
+  | zero => simp
   | succ k ih =>
-    rw [Array.ofFn_succ, Array.foldl_push, Fin.foldl_succ_last]
-    congr 1
-    apply ih
+    rw [Array.ofFn_succ, Array.foldl_push, Fin.foldl_succ_last, ih]
+    rfl
 
 /-- `Fin.foldl` is extensional under pointwise equality of the step. -/
 theorem fin_foldl_ext {α} (n : Nat) (f g : α → Fin n → α) (init : α)
     (h : ∀ s i, f s i = g s i) :
     Fin.foldl n f init = Fin.foldl n g init := by
   induction n generalizing init with
-  | zero => simp [Fin.foldl_zero]
+  | zero => simp
   | succ k ih =>
-    rw [Fin.foldl_succ_last, Fin.foldl_succ_last]
-    rw [h]
-    congr 1
-    apply ih
-    intros; apply h
+    rw [Fin.foldl_succ_last, Fin.foldl_succ_last, h, ih _ _ _ (fun _ _ => h _ _)]
 
 end SHS.Equiv.ArrayFold

@@ -47,6 +47,51 @@ bench/              timing scripts
 support/            pandoc filters, CSS, Lean syntax definition
 ```
 
+## Coverage
+
+The literate spec covers the entire Secure Hash Standard: **SHA-1, SHA-224,
+SHA-256, SHA-384, SHA-512, SHA-512/224, SHA-512/256**.  Every algorithm
+is exercised against the corresponding NIST CAVP test vectors via
+`make test`.
+
+The `impl/` reference implementation and the `equiv/` machine-checked
+equivalence proof currently cover **only SHA-256**.  The other
+algorithms in the spec are not yet paired with a verified
+implementation.
+
+The headline correctness theorems are:
+
+* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with the
+  spec's per-block compression function.
+* `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with
+  `SHS.SHA256.sha256` for all `data : ByteArray` with `data.size < 2 ^
+  61` (the FIPS 180-4 §5.1.1 bit-length cap converted to bytes).
+  `Impl.sha256` `panic!`s on oversized inputs rather than producing a
+  wrong digest.
+
+## Trust base
+
+The pinned axiom sets (see `equiv/AxiomCheck.lean`):
+
+* **`compress_correct`** (the SHA-256 compression function): only
+  `propext`, `Classical.choice`, `Quot.sound` — Lean core's classical
+  axioms.
+* **`sha256_correct`** (the full byte-in / byte-out hash): the three
+  classical axioms, plus `Lean.ofReduceBool` and `Lean.trustCompiler`
+  emitted by three remaining `bv_decide` calls in the byte ↔ `BitVec`
+  digest/parsing bridges (`equiv/SHA256/ToU32s.lean`,
+  `equiv/SHA256/Digest.lean`).  These two extra axioms state that the
+  native compiler's `Bool` reduction is sound.
+
+### Scope of the proofs
+
+The correctness theorems prove equivalence between the **Lean source**
+of `Impl.sha256` and the literate spec.  They do **not** prove that the
+compiled binary produced by `lake build` (which lowers Lean → C → native
+code through the Lean compiler and a C toolchain) computes the same
+function.  Bugs in the Lean compiler, the C compiler, or the runtime
+are out of scope and are not covered by `sha256_correct`.
+
 ## License
 
 GPL-3.0-or-later.

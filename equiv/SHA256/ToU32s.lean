@@ -37,58 +37,31 @@ def fourBytesBits (bytes : Vector UInt8 64) (i : Fin 16) : List Bool :=
   byteToBits (bytes[4 * i.val + 3]'(by omega))
 
 /-- `Word.fromBits` of one byte's MSB-first bit list equals the byte's
-underlying `BitVec 8`.
-
-The proof unfolds `byteToBits` and the eight-step `Word.fromBits` foldl
-into an explicit `acc <<< 1 ||| _` chain, converts each
-`b.toNat.testBit i` to `b.toBitVec.getLsbD i` (so the expression is
-purely `BitVec 8`-shaped), then closes with `bv_decide`. -/
+underlying `BitVec 8`.  Unfolds `byteToBits` + the 8-step foldl, then
+the shared `UInt8.toNat_testBit_eq_getLsbD` simp lemma turns the goal
+into pure `BitVec 8` arithmetic that `bv_decide` discharges. -/
 theorem fromBits_byteToBits (b : UInt8) :
     (SHS.Word.fromBits (n := 8) (byteToBits b)) = b.toBitVec := by
-  show (SHS.Word.fromBits (n := 8)
-    [b.toNat.testBit 7, b.toNat.testBit 6, b.toNat.testBit 5, b.toNat.testBit 4,
-     b.toNat.testBit 3, b.toNat.testBit 2, b.toNat.testBit 1, b.toNat.testBit 0])
-    = b.toBitVec
-  unfold SHS.Word.fromBits
-  simp only [List.foldl]
-  -- Bridge `b.toNat.testBit i` to `b.toBitVec.getLsbD i` so the goal
-  -- becomes pure `BitVec 8` arithmetic that `bv_decide` can crunch.
-  have h : ∀ i, b.toNat.testBit i = b.toBitVec.getLsbD i := fun i => by
-    rw [show b.toNat = b.toBitVec.toNat from rfl, BitVec.testBit_toNat]
-  simp only [h]
+  unfold byteToBits SHS.Word.fromBits
+  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
+    List.nil_append, List.cons_append, List.map_cons, List.map_nil, List.foldl,
+    UInt8.toNat_testBit_eq_getLsbD]
   bv_decide
 
 /-- Per-word bridge: the impl's `beU32` decode equals the spec's
 `Word.fromBits` over the 32 MSB-first bits of the same four bytes.
-
-Same pattern as `fromBits_byteToBits`: explicitly enumerate the 32-bit
-list, unfold the `foldl` step-by-step, lift `Nat.testBit` to
-`BitVec.getLsbD`, then `bv_decide` over the resulting BitVec arithmetic. -/
+Same shape as `fromBits_byteToBits` at width 32. -/
 theorem beU32_eq_fromBits (bytes : Vector UInt8 64) (i : Fin 16) :
     (Impl.beU32 bytes i).toBitVec =
       SHS.Word.fromBits (n := 32) (fourBytesBits bytes i) := by
-  unfold Impl.beU32 fourBytesBits byteToBits
-  -- Now both sides reference the same `bytes[4*i.val + k]` accesses;
-  -- generalise them so `bv_decide` doesn't have to see through indexing.
+  unfold Impl.beU32 fourBytesBits byteToBits SHS.Word.fromBits
   generalize bytes[4 * i.val]'(by omega) = b0
   generalize bytes[4 * i.val + 1]'(by omega) = b1
   generalize bytes[4 * i.val + 2]'(by omega) = b2
   generalize bytes[4 * i.val + 3]'(by omega) = b3
-  show (b0.toUInt32 <<< 24 ||| b1.toUInt32 <<< 16 ||| b2.toUInt32 <<< 8 ||| b3.toUInt32).toBitVec =
-    SHS.Word.fromBits (n := 32)
-      ([b0.toNat.testBit 7, b0.toNat.testBit 6, b0.toNat.testBit 5, b0.toNat.testBit 4,
-        b0.toNat.testBit 3, b0.toNat.testBit 2, b0.toNat.testBit 1, b0.toNat.testBit 0,
-        b1.toNat.testBit 7, b1.toNat.testBit 6, b1.toNat.testBit 5, b1.toNat.testBit 4,
-        b1.toNat.testBit 3, b1.toNat.testBit 2, b1.toNat.testBit 1, b1.toNat.testBit 0,
-        b2.toNat.testBit 7, b2.toNat.testBit 6, b2.toNat.testBit 5, b2.toNat.testBit 4,
-        b2.toNat.testBit 3, b2.toNat.testBit 2, b2.toNat.testBit 1, b2.toNat.testBit 0,
-        b3.toNat.testBit 7, b3.toNat.testBit 6, b3.toNat.testBit 5, b3.toNat.testBit 4,
-        b3.toNat.testBit 3, b3.toNat.testBit 2, b3.toNat.testBit 1, b3.toNat.testBit 0])
-  unfold SHS.Word.fromBits
-  simp only [List.foldl]
-  have h : ∀ (b : UInt8) i, b.toNat.testBit i = b.toBitVec.getLsbD i := fun b i => by
-    rw [show b.toNat = b.toBitVec.toNat from rfl, BitVec.testBit_toNat]
-  simp only [h]
+  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
+    List.nil_append, List.cons_append, List.append_assoc, List.map_cons, List.map_nil,
+    List.foldl, UInt8.toNat_testBit_eq_getLsbD]
   bv_decide
 
 /-! ## Block-level bridge

@@ -154,7 +154,7 @@ theorem implScheduleStep_value_match
       (impl_block[k % 16]'(by
         have := Nat.mod_lt k (show 0 < 16 by decide); omega)).toBitVec = W[k]!) :
     ((implScheduleStep ⟨n, hn⟩ impl_block).2).toBitVec =
-      (specScheduleStep (toSpecBlock block₀) ⟨n, hn⟩ W)[n]! := by
+      (specScheduleStep (toSpecBlock block₀) n W)[n]! := by
   by_cases hn16 : n < 16
   · -- Initial case: spec writes `M[n]!`; impl block unchanged.
     unfold implScheduleStep specScheduleStep

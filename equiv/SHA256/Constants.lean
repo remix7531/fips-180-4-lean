@@ -23,9 +23,8 @@ open scoped SHS.SHA256
 
 /-- `Fin 64`-indexed bridge: `K32[i].toBitVec = K[i.val]!`. -/
 @[simp] theorem K32_toBitVec (i : Fin 64) :
-    Impl.K32[i].toBitVec = SHS.SHA256.K[i.val]! := by
-  have h : ∀ k : Fin 64, Impl.K32[k].toBitVec = SHS.SHA256.K[k.val]! := by decide
-  exact h i
+    Impl.K32[i].toBitVec = SHS.SHA256.K[i.val]! :=
+  (by decide : ∀ k : Fin 64, Impl.K32[k].toBitVec = SHS.SHA256.K[k.val]!) i
 
 /-- `Nat`-indexed variant of `K32_toBitVec`, useful after `interval_cases`
 when the goal carries a `Nat`-with-bound access.  Reduces to the

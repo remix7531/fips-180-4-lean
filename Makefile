@@ -3,9 +3,15 @@
 all: lean
 
 # --- Lean ---
-
+#
+# Build every library and executable in the project: `spec` (the default
+# Lake target), the `impl` reference SHA-256 implementation, the `equiv`
+# spec ↔ impl equivalence proofs, and the `tests` CAVP runner.  Building
+# `equiv` from a clean `.lake` is the regression gate for the proof —
+# without it, breakage in `equiv/SHA256/Foldl/*` or `equiv/AxiomCheck`
+# would only show up locally where caches mask it.
 lean:
-	lake build
+	lake build spec impl equiv tests
 
 # --- Run NIST CAVP test vectors against the spec ---
 

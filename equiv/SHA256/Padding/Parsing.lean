@@ -38,8 +38,10 @@ private theorem implPaddedBlocks_eq_parseBytes (data : ByteArray) :
     (implPaddedBlocks data).map (fun b => toSpecBlock (Impl.toU32s b)) =
       parseBytes (implPaddedBytes data) := by
   unfold implPaddedBlocks parseBytes
-  rw [Array.map_ofFn]
-  rfl
+  apply Array.ext
+  · simp
+  · intro i h₁ _
+    simp only [Array.getElem_map, Array.getElem_ofFn]
 
 /-- Byte-level parse equals bit-level parse over `bytesToBitMessage`,
 for any 64-aligned `ByteArray`. -/
@@ -122,11 +124,8 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
           omega
         · intro k hk1 hk2
           simp only [List.length_cons, List.length_nil] at hk2
-          interval_cases k
-          · simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
-          · simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
-          · simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
-          · simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
+          interval_cases k <;>
+            simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
       rw [hRhsList]
       simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil]
       simp only [Vector.getElem_ofFn]

@@ -156,21 +156,14 @@ def sha1_alt (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let H := blocks.foldl compress_alt H0
   H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]!
 
-/-!  -/
-
-/-- The standard and alternative SHA-1 methods yield the same message digest. -/
-theorem sha1_alt_eq_sha1 (M : Message) (h : M.length < 2 ^ 64) :
-    sha1_alt M h = sha1 M h
---#--
-  -- TODO: prove. Sketch — reduce to per-block equivalence `compress_alt H M = compress H M`,
-  -- then lift both `forIn` loops to `List.foldl` and prove by induction on the
-  -- iteration count `t ∈ [0, 80)` the invariant: for all `i ∈ [0, 16)`, the circular
-  -- queue's `W[i]` equals `(schedule M)[j]` where `j` is the largest index less than
-  -- `t` with `j % 16 = i` (or `i` if no such index exists). The address arithmetic
-  -- checks out because `(s+13) % 16 = (t-3) % 16`, `(s+8) % 16 = (t-8) % 16`,
-  -- `(s+2) % 16 = (t-14) % 16`, and `s = (t-16) % 16`, where `s = t % 16`.
-  := by sorry
---#--
+/-!
+The FIPS 180-4 §6.1.3 prose claims that this alternate method yields the
+same digest as the standard method (Sec. 6.1.2).  That equivalence is
+**not formalized in this spec.**  `SHA1.sha1_alt` is provided as a
+literate translation of the FIPS text and is not consumed by any other
+definition or theorem; only the standard `SHA1.sha1` (above) is part of
+the verified pipeline.
+-/
 
 end SHA1 --#
 

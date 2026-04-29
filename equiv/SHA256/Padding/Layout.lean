@@ -75,9 +75,7 @@ theorem size_implPaddedBytes_mod (data : ByteArray) :
     (implPaddedBytes data).size % 64 = 0 := by
   unfold implPaddedBytes zerosCount
   simp [ByteArray.size_append]
-  by_cases h : data.size % 64 < 56
-  · simp [h]; omega
-  · simp [h]; omega
+  split <;> omega
 
 theorem size_implPaddedBytes_eq (data : ByteArray) :
     (implPaddedBytes data).size = data.size + 1 + zerosCount data + 8 := by
@@ -135,6 +133,34 @@ theorem get!_implPaddedBytes_length (data : ByteArray) (i : Nat)
     rw [hsz] at h2
     omega
 
+/-! ## Positional byte rule
+
+A single closed-form per-byte rule for `(implPaddedBytes data).get! pos`,
+covering all four cases (data / 0x80 / zero-pad / length-tag) in one
+statement.  The four `paddedBlock_*` formulas below are 5-line
+specialisations of this lemma. -/
+
+/-- The byte at position `pos` of the padded data follows one of four
+rules: the original data byte (`pos < data.size`), the `0x80` separator
+(`pos = data.size`), a zero in the pad region, or a length-tag byte. -/
+theorem get!_implPaddedBytes_eq (data : ByteArray) (pos : Nat)
+    (h : pos < (implPaddedBytes data).size) :
+    (implPaddedBytes data).get! pos =
+      (if pos < data.size then data.get! pos
+       else if pos = data.size then 0x80
+       else if pos < data.size + 1 + zerosCount data then 0
+       else (lengthBE64 (data.size.toUInt64 <<< 3)).get!
+              (pos - (data.size + 1 + zerosCount data))) := by
+  by_cases h1 : pos < data.size
+  · simp only [h1, if_true, get!_implPaddedBytes_data _ _ h1]
+  · simp only [h1, if_false]
+    by_cases h2 : pos = data.size
+    · simp only [h2, if_true, get!_implPaddedBytes_sep]
+    · simp only [h2, if_false]
+      by_cases h3 : pos < data.size + 1 + zerosCount data
+      · simp only [h3, if_true, get!_implPaddedBytes_zero _ _ (by omega) h3]
+      · simp only [h3, if_false, get!_implPaddedBytes_length _ _ (by omega) h]
+
 /-! ## `lengthBE64` byte access -/
 
 theorem lengthBE64_get!_eq (bits : UInt64) (i : Nat) (h : i < 8) :
@@ -176,7 +202,9 @@ theorem paddedBlock_complete (data : ByteArray) (k : Nat) (h : k < data.size / 6
   omega
 
 /-- Final block (case `remaining < 56`): one extra block holding data,
-`0x80`, zeros, and the bit-length tag. -/
+`0x80`, zeros, and the bit-length tag.  Specialisation of
+`get!_implPaddedBytes_eq` at block index `data.size / 64` and `remaining
+< 56` (so the data, separator, zeros, and length tag all fit). -/
 theorem paddedBlock_final_lt56 (data : ByteArray) (h : data.size % 64 < 56) :
     paddedBlock data (data.size / 64) =
       Vector.ofFn (fun i : Fin 64 =>
@@ -186,133 +214,92 @@ theorem paddedBlock_final_lt56 (data : ByteArray) (h : data.size % 64 < 56) :
            else 0)
         else
           ((data.size.toUInt64 <<< 3 >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8) := by
-  unfold paddedBlock
-  congr 1
-  funext j
-  set blocks := data.size / 64
-  set remaining := data.size % 64 with hr
-  have hd : data.size = 64 * blocks + remaining := (Nat.div_add_mod data.size 64).symm
-  have hjvalid : blocks * 64 + j.val < (implPaddedBytes data).size := by
-    rw [size_implPaddedBytes_eq, zerosCount_lt56 _ h]
-    have : j.val < 64 := j.isLt
-    omega
+  unfold paddedBlock; congr 1; funext j
+  have hd : data.size = 64 * (data.size / 64) + data.size % 64 :=
+    (Nat.div_add_mod data.size 64).symm
+  have hjvalid : data.size / 64 * 64 + j.val < (implPaddedBytes data).size := by
+    rw [size_implPaddedBytes_eq, zerosCount_lt56 _ h]; have := j.isLt; omega
+  rw [get!_implPaddedBytes_eq _ _ hjvalid, zerosCount_lt56 _ h]
   by_cases hj56 : j.val < 56
-  · simp only [hj56, if_true]
-    by_cases hjr : j.val < remaining
-    · simp only [hjr, if_true]
-      have hpos : blocks * 64 + j.val < data.size := by
-        have : j.val < remaining := hjr
-        omega
-      rw [get!_implPaddedBytes_data _ _ hpos]
-    · simp only [hjr, if_false]
-      by_cases hjeq : j.val = remaining
-      · simp only [hjeq, if_true]
-        have hpos : blocks * 64 + remaining = data.size := by omega
-        rw [hpos]
-        exact get!_implPaddedBytes_sep data
-      · simp only [hjeq, if_false]
-        have hpos1 : data.size + 1 ≤ blocks * 64 + j.val := by omega
-        have hpos2 : blocks * 64 + j.val <
-            data.size + 1 + zerosCount data := by
-          rw [zerosCount_lt56 _ h]; omega
-        exact get!_implPaddedBytes_zero _ _ hpos1 hpos2
-  · simp only [hj56, if_false]
-    have hpos1 : data.size + 1 +
-        zerosCount data ≤ blocks * 64 + j.val := by
-      rw [zerosCount_lt56 _ h]; omega
-    rw [get!_implPaddedBytes_length _ _ hpos1 hjvalid]
-    have hidx : blocks * 64 + j.val -
-        (data.size + 1 + zerosCount data)
-        = j.val - 56 := by
-      rw [zerosCount_lt56 _ h]; omega
-    rw [hidx]
+  · have heq_data : (data.size / 64 * 64 + j.val < data.size)
+        = (j.val < data.size % 64) :=
+      propext ⟨fun _ => by omega, fun _ => by omega⟩
+    have heq_sep : (data.size / 64 * 64 + j.val = data.size)
+        = (j.val = data.size % 64) :=
+      propext ⟨fun _ => by omega, fun _ => by omega⟩
+    have hzero : data.size / 64 * 64 + j.val < data.size + 1 + (55 - data.size % 64) := by
+      omega
+    simp [hj56, heq_data, heq_sep, hzero]
+  · have hge_data : ¬ data.size / 64 * 64 + j.val < data.size := by omega
+    have hne_sep : ¬ data.size / 64 * 64 + j.val = data.size := by omega
+    have hge_zero : ¬ data.size / 64 * 64 + j.val < data.size + 1 + (55 - data.size % 64) := by
+      omega
+    have hidx : data.size / 64 * 64 + j.val - (data.size + 1 + (55 - data.size % 64))
+        = j.val - 56 := by omega
     have hk : j.val - 56 < 8 := by have := j.isLt; omega
-    rw [lengthBE64_get!_eq _ _ hk]
-    congr 2
-    have : 7 - (j.val - 56) = 63 - j.val := by omega
-    rw [this]
+    have h63 : 7 - (j.val - 56) = 63 - j.val := by omega
+    simp [hj56, hge_data, hne_sep, hge_zero, hidx, lengthBE64_get!_eq _ _ hk, h63]
 
 /-- Final block A (case `remaining ≥ 56`): data bytes, then `0x80`, then
-zeros (no length tag, since the block is full). -/
+zeros (no length tag — that's in block B).  Specialisation of
+`get!_implPaddedBytes_eq` at block index `data.size / 64` when there's
+no room for the length suffix. -/
 theorem paddedBlock_finalA_ge56 (data : ByteArray) (h : ¬ data.size % 64 < 56) :
     paddedBlock data (data.size / 64) =
       Vector.ofFn (fun i : Fin 64 =>
         if i.val < data.size % 64 then data.get! (data.size / 64 * 64 + i.val)
         else if i.val = data.size % 64 then 0x80
         else 0) := by
-  unfold paddedBlock
-  congr 1
-  funext j
-  set blocks := data.size / 64
-  set remaining := data.size % 64 with hr
-  have hd : data.size = 64 * blocks + remaining := (Nat.div_add_mod data.size 64).symm
-  have hr_lt : remaining < 64 := by rw [hr]; exact Nat.mod_lt _ (by decide)
-  have hr_ge : 56 ≤ remaining := by omega
-  have hjvalid : blocks * 64 + j.val < (implPaddedBytes data).size := by
-    rw [size_implPaddedBytes_eq, zerosCount_ge56 _ h]
-    have : j.val < 64 := j.isLt
-    omega
-  by_cases hjr : j.val < remaining
-  · simp only [hjr, if_true]
-    have hpos : blocks * 64 + j.val < data.size := by omega
-    rw [get!_implPaddedBytes_data _ _ hpos]
-  · simp only [hjr, if_false]
-    by_cases hjeq : j.val = remaining
-    · simp only [hjeq, if_true]
-      have hpos : blocks * 64 + remaining = data.size := by omega
-      rw [hpos]
-      exact get!_implPaddedBytes_sep data
-    · simp only [hjeq, if_false]
-      have hjlt64 : j.val < 64 := j.isLt
-      have hpos1 : data.size + 1 ≤ blocks * 64 + j.val := by omega
-      have hpos2 : blocks * 64 + j.val <
-          data.size + 1 + zerosCount data := by
-        rw [zerosCount_ge56 _ h]; omega
-      exact get!_implPaddedBytes_zero _ _ hpos1 hpos2
+  unfold paddedBlock; congr 1; funext j
+  have hd : data.size = 64 * (data.size / 64) + data.size % 64 :=
+    (Nat.div_add_mod data.size 64).symm
+  have hr_lt : data.size % 64 < 64 := Nat.mod_lt _ (by decide)
+  have hjvalid : data.size / 64 * 64 + j.val < (implPaddedBytes data).size := by
+    rw [size_implPaddedBytes_eq, zerosCount_ge56 _ h]; have := j.isLt; omega
+  rw [get!_implPaddedBytes_eq _ _ hjvalid, zerosCount_ge56 _ h]
+  have heq_data : (data.size / 64 * 64 + j.val < data.size)
+      = (j.val < data.size % 64) :=
+    propext ⟨fun _ => by omega, fun _ => by omega⟩
+  have heq_sep : (data.size / 64 * 64 + j.val = data.size)
+      = (j.val = data.size % 64) :=
+    propext ⟨fun _ => by omega, fun _ => by omega⟩
+  have hzero : data.size / 64 * 64 + j.val < data.size + 1 + (64 + 55 - data.size % 64) := by
+    have := j.isLt; omega
+  simp [heq_data, heq_sep, hzero]
 
 /-- Final block B (case `remaining ≥ 56`): all zeros except the length
-tag in the last 8 bytes. -/
+tag in the last 8 bytes.  Specialisation of `get!_implPaddedBytes_eq`
+at block index `data.size / 64 + 1`, which lies entirely past the
+zero-pad cutoff. -/
 theorem paddedBlock_finalB_ge56 (data : ByteArray) (h : ¬ data.size % 64 < 56) :
     paddedBlock data (data.size / 64 + 1) =
       Vector.ofFn (fun i : Fin 64 =>
         if i.val < 56 then (0 : UInt8)
         else ((data.size.toUInt64 <<< 3 >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8) := by
-  unfold paddedBlock
-  congr 1
-  funext j
-  set blocks := data.size / 64
-  set remaining := data.size % 64 with hr
-  have hd : data.size = 64 * blocks + remaining := (Nat.div_add_mod data.size 64).symm
-  have hr_lt : remaining < 64 := by rw [hr]; exact Nat.mod_lt _ (by decide)
-  have hr_ge : 56 ≤ remaining := by omega
+  unfold paddedBlock; congr 1; funext j
+  have hd : data.size = 64 * (data.size / 64) + data.size % 64 :=
+    (Nat.div_add_mod data.size 64).symm
+  have hr_lt : data.size % 64 < 64 := Nat.mod_lt _ (by decide)
   have hjlt : j.val < 64 := j.isLt
-  have hpsize : (implPaddedBytes data).size = (blocks + 2) * 64 := by
-    rw [size_implPaddedBytes_eq, zerosCount_ge56 _ h]
-    omega
-  have hpos_valid : (blocks + 1) * 64 + j.val < (implPaddedBytes data).size := by
+  have hpsize : (implPaddedBytes data).size = (data.size / 64 + 2) * 64 := by
+    rw [size_implPaddedBytes_eq, zerosCount_ge56 _ h]; omega
+  have hjvalid : (data.size / 64 + 1) * 64 + j.val < (implPaddedBytes data).size := by
     rw [hpsize]; omega
+  rw [get!_implPaddedBytes_eq _ _ hjvalid, zerosCount_ge56 _ h]
+  have hge_data : ¬ (data.size / 64 + 1) * 64 + j.val < data.size := by omega
+  have hne_sep : ¬ (data.size / 64 + 1) * 64 + j.val = data.size := by omega
   by_cases hj56 : j.val < 56
-  · simp only [hj56, if_true]
-    have hpos1 : data.size + 1 ≤ (blocks + 1) * 64 + j.val := by omega
-    have hpos2 : (blocks + 1) * 64 + j.val <
-        data.size + 1 + zerosCount data := by
-      rw [zerosCount_ge56 _ h]; omega
-    exact get!_implPaddedBytes_zero _ _ hpos1 hpos2
-  · simp only [hj56, if_false]
-    have hpos1 : data.size + 1 + zerosCount data
-        ≤ (blocks + 1) * 64 + j.val := by
-      rw [zerosCount_ge56 _ h]; omega
-    rw [get!_implPaddedBytes_length _ _ hpos1 hpos_valid]
-    have hidx : (blocks + 1) * 64 + j.val -
-        (data.size + 1 + zerosCount data)
-        = j.val - 56 := by
-      rw [zerosCount_ge56 _ h]; omega
-    rw [hidx]
+  · have hzero : (data.size / 64 + 1) * 64 + j.val < data.size + 1 + (64 + 55 - data.size % 64) := by
+      omega
+    simp [hj56, hge_data, hne_sep, hzero]
+  · have hge_zero : ¬ (data.size / 64 + 1) * 64 + j.val < data.size + 1 + (64 + 55 - data.size % 64) := by
+      omega
+    have hidx : (data.size / 64 + 1) * 64 + j.val
+          - (data.size + 1 + (64 + 55 - data.size % 64))
+        = j.val - 56 := by omega
     have hk : j.val - 56 < 8 := by omega
-    rw [lengthBE64_get!_eq _ _ hk]
-    congr 2
-    have : 7 - (j.val - 56) = 63 - j.val := by omega
-    rw [this]
+    have h63 : 7 - (j.val - 56) = 63 - j.val := by omega
+    simp [hj56, hge_data, hne_sep, hge_zero, hidx, lengthBE64_get!_eq _ _ hk, h63]
 
 /-! ## Total padded block count -/
 

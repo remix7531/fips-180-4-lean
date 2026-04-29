@@ -54,7 +54,7 @@ fold the spec definition back. -/
 theorem sha256_correct (data : ByteArray) (h : data.size < 2 ^ 61) :
     digestBitVec (Impl.sha256 data) =
       SHS.SHA256.sha256 (bytesToBitMessage data) (bitLen_lt_of_size_lt data h) := by
-  rw [impl_sha256_eq_refactored,
+  rw [impl_sha256_eq_refactored _ h,
       implSha256Refactored_eq_extractDigest,
       digestBitVec_extract,
       foldl_compress_lift,

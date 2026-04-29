@@ -140,7 +140,7 @@ theorem MatchAfter_step
       have hkn : k ≠ n := Nat.ne_of_lt hk_lt
       have hold := hring k hk_lt (by omega)
       have hkW : k < W.size := by simp only [hWsize]; omega
-      have hspec_k : (specScheduleStep (toSpecBlock block₀) ⟨n, hn⟩ W)[k]! = W[k]! := by
+      have hspec_k : (specScheduleStep (toSpecBlock block₀) n W)[k]! = W[k]! := by
         unfold specScheduleStep
         rw [getElem!_pos _ k (by split <;> simp [hkW])]
         rw [getElem!_pos _ k hkW]
@@ -182,8 +182,7 @@ theorem MatchAfter_iter
         implFusedStep ⟨i.val, lt_of_lt_of_le i.isLt hn⟩ acc) (block, state)
     let spec_acc :=
       Fin.foldl n (fun acc (i : Fin n) =>
-        specFusedStep (toSpecBlock block)
-          ⟨i.val, lt_of_lt_of_le i.isLt hn⟩ acc)
+        specFusedStep (toSpecBlock block) i.val acc)
         (Array.replicate 64 default, initVars (toSpecState state))
     MatchAfter block impl_acc.1 impl_acc.2 spec_acc.1 spec_acc.2 n := by
   induction n with
@@ -212,7 +211,8 @@ theorem toSpecState_implCompressFoldl
   have hvars' : ∀ (k : Nat) (hk : k < 8),
       ((Fin.foldl 64 (fun acc (i : Fin 64) => implFusedStep i acc)
         (block, state)).2[k]'hk).toBitVec =
-      ((Fin.foldl 64 (fun acc t => specFusedStep (toSpecBlock block) t acc)
+      ((Fin.foldl 64
+          (fun acc (t : Fin 64) => specFusedStep (toSpecBlock block) t.val acc)
         (Array.replicate 64 default, initVars (toSpecState state))).2[k]'hk) := by
     intro k hk
     have := hvars ⟨k, hk⟩

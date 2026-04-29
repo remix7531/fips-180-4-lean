@@ -57,9 +57,7 @@ theorem bitLen_lt_of_size_lt (data : ByteArray) (h : data.size < 2 ^ 61) :
     rw [show (fun (_ : UInt8) => 8) = Function.const UInt8 8 from rfl]
     rw [List.map_const, List.sum_replicate_nat]
     show data.data.toList.length * 8 = 8 * data.size
-    rw [Array.length_toList, Nat.mul_comm]
-    rfl
-  rw [hLen]
+    rw [Array.length_toList, Nat.mul_comm]; rfl
   -- `8 * 2^61 = 2^64`, so `data.size < 2^61 → 8 * data.size < 2^64`.
   have h264 : (8 : Nat) * 2 ^ 61 = 2 ^ 64 := by decide
   omega
