@@ -2,10 +2,18 @@
 
 **[Read the rendered spec →][site]**
 
-A [literate][literate-programming] Lean 4 port of [NIST FIPS PUB 180-4][spec] (Secure Hash
-Standard) — the standard's prose and its Lean code live side-by-side in one
-document, with each part driving the other. [mdgen] and `pandoc` render the
-source into HTML. All 1415 NIST CAVP test vectors pass.
+A Lean 4 port of [NIST FIPS PUB 180-4][spec] (Secure Hash Standard) in
+three layers:
+
+* **`spec/`** — a [literate][literate-programming] transcription of
+  the standard covering the full SHA family (SHA-1, SHA-224, SHA-256,
+  SHA-384, SHA-512, SHA-512/224, SHA-512/256).  All 1415 NIST CAVP
+  vectors pass.  Rendered via [mdgen] + `pandoc`.
+* **`impl/`** — a performance-tuned executable SHA-256 implementation
+  (~177 MiB/s; ~2.3× slower than `sha256sum`).
+* **`equiv/`** — machine-checked equivalence proofs between the impl
+  and the spec, with public theorems `compress_correct` and
+  `sha256_correct` pinned to a small classical-axiom trust base.
 
 [site]: https://remix7531.com/fips-180-4-lean/
 [literate-programming]: https://en.wikipedia.org/wiki/Literate_programming
@@ -18,79 +26,32 @@ source into HTML. All 1415 NIST CAVP test vectors pass.
 direnv allow       # nix dev shell (or install elan + pandoc manually)
 make               # lake build
 make test          # all 1415 CAVP vectors
-make fast-test     # ~10% sample
 make html          # docs/FIPS-180-4.html
 ```
 
 ## Benchmark
 
-`bench/cavp.sh` times the full 1415-vector CAVP run for both pipelines.
-On a modern consumer AMD CPU:
+`bench/cavp.sh` times spec vs impl on the SHA-256 NIST CAVP run;
+`lake exe stress` measures impl throughput against `sha256sum` on
+multi-MB random files.  Steady-state impl throughput is ~177 MiB/s
+from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.
 
-| pipeline | time |
-|---|---|
-| spec | ~28.4 s |
-| impl | ~1.2 s (≈24× faster) |
+## Coverage and trust base
 
-The spec is a direct transcription of the standard and is not optimised;
-the impl is a `UInt32`-based implementation and is being proven
-equivalent to the spec under `equiv/`.
+The `impl/` implementation and `equiv/` proofs cover only SHA-256;
+the other algorithms are spec-only.
 
-## Layout
-
-```
-spec.lean, spec/    Lean + markdown chapters (the literate spec)
-impl/               UInt32-based reference port (SHA-256)
-equiv/              spec ↔ impl equivalence proofs
-tests/              CAVP runner and vector parser
-bench/              timing scripts
-support/            pandoc filters, CSS, Lean syntax definition
-```
-
-## Coverage
-
-The literate spec covers the entire Secure Hash Standard: **SHA-1, SHA-224,
-SHA-256, SHA-384, SHA-512, SHA-512/224, SHA-512/256**.  Every algorithm
-is exercised against the corresponding NIST CAVP test vectors via
-`make test`.
-
-The `impl/` reference implementation and the `equiv/` machine-checked
-equivalence proof currently cover **only SHA-256**.  The other
-algorithms in the spec are not yet paired with a verified
-implementation.
-
-The headline correctness theorems are:
-
-* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with the
-  spec's per-block compression function.
+* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with
+  the spec's per-block compression function.  Depends only on Lean
+  core's classical axioms (`propext`, `Classical.choice`, `Quot.sound`).
 * `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with
-  `SHS.SHA256.sha256` for all `data : ByteArray` with `data.size < 2 ^
-  61` (the FIPS 180-4 §5.1.1 bit-length cap converted to bytes).
-  `Impl.sha256` `panic!`s on oversized inputs rather than producing a
-  wrong digest.
+  `SHS.SHA256.sha256` for all `data` with `data.size < 2 ^ 61` (the
+  FIPS 180-4 §5.1.1 bit-length cap).  Adds `Lean.ofReduceBool` and
+  `Lean.trustCompiler` from three `bv_decide` calls in the byte ↔
+  `BitVec` bridges.  See `equiv/AxiomCheck.lean` for the pinned set.
 
-## Trust base
-
-The pinned axiom sets (see `equiv/AxiomCheck.lean`):
-
-* **`compress_correct`** (the SHA-256 compression function): only
-  `propext`, `Classical.choice`, `Quot.sound` — Lean core's classical
-  axioms.
-* **`sha256_correct`** (the full byte-in / byte-out hash): the three
-  classical axioms, plus `Lean.ofReduceBool` and `Lean.trustCompiler`
-  emitted by three remaining `bv_decide` calls in the byte ↔ `BitVec`
-  digest/parsing bridges (`equiv/SHA256/ToU32s.lean`,
-  `equiv/SHA256/Digest.lean`).  These two extra axioms state that the
-  native compiler's `Bool` reduction is sound.
-
-### Scope of the proofs
-
-The correctness theorems prove equivalence between the **Lean source**
-of `Impl.sha256` and the literate spec.  They do **not** prove that the
-compiled binary produced by `lake build` (which lowers Lean → C → native
-code through the Lean compiler and a C toolchain) computes the same
-function.  Bugs in the Lean compiler, the C compiler, or the runtime
-are out of scope and are not covered by `sha256_correct`.
+The proofs equate the **Lean source** of impl and spec; they do not
+cover bugs in the Lean compiler, C toolchain, or runtime.
 
 ## License
 

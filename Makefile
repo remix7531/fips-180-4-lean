@@ -1,4 +1,4 @@
-.PHONY: all lean test fast-test bench docs html clean
+.PHONY: all lean test full-test bench stress stress-gen docs html clean
 
 all: lean
 
@@ -13,20 +13,35 @@ all: lean
 lean:
 	lake build spec impl equiv tests
 
-# --- Run NIST CAVP test vectors against the spec ---
+# --- NIST CAVP test vectors ---
+#
+# `test` runs ~1/10 of short/long vectors and 1/10 of MCT chains across
+# all seven SHA-family algorithms; tens of seconds, suitable for CI and
+# default `make`.  `full-test` runs the complete CAVS workload (all
+# vectors, all 100 MCT chains × 7 algorithms) and takes many minutes.
 
 test:
-	lake exe cavp
-
-# --- Fast subset (~10% of vectors, deterministic) for quick iteration ---
-
-fast-test:
 	lake exe cavp --fast
+
+full-test:
+	lake exe cavp
 
 # --- Compare spec vs impl execution time on the full CAVP vector set ---
 
 bench:
 	bench/cavp.sh
+
+# --- Large-input stress test against GNU sha256sum ---
+#
+# `stress-gen` populates `tests/stress/` with random binary files via dd
+# (1 MiB, 8 MiB, 32 MiB).  `stress` reads each file, hashes it via spec
+# (small only) and impl, and compares against `sha256sum`.
+
+stress-gen:
+	bench/gen-stress.sh
+
+stress: stress-gen
+	lake exe stress
 
 # --- Generate markdown from Lean via mdgen ---
 

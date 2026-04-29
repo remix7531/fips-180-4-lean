@@ -3,6 +3,7 @@ import spec.Setup
 import equiv.SHA256.Bridge
 import equiv.SHA256.Lift
 import equiv.Common.Bytes
+import Mathlib.Tactic.IntervalCases
 
 /-!
 # Per-block byte → word lift bridge
@@ -94,5 +95,29 @@ theorem toSpecBlock_toU32s_index (block : Vector UInt8 64) (i : Fin 16) :
     Vector.getElem_ofFn (i := i.val) i.isLt]
   -- Closing: per-word bridge.
   exact beU32_eq_fromBits block i
+
+/-! ## Fast `ByteArray`-direct path
+
+`Impl.sha256` no longer materializes the per-block `Vector UInt8 64`
+intermediate; instead it calls `toU32sFromBytes data off` which reads
+bytes straight out of the input `ByteArray`.  This lemma bridges the
+fast path to the existing equivalence machinery (which is stated
+against the `Vector`-shaped form). -/
+
+/-- The direct-from-`ByteArray` path produces the same `Block` as the
+old `toU32s ∘ Vector.ofFn` shape.  Both bodies are `Vector.ofFn`s
+whose underlying functions agree pointwise after one `Vector.ofFn` β-reduction. -/
+theorem toU32sFromBytes_eq_toU32s (data : ByteArray) (off : Nat) :
+    Impl.toU32sFromBytes data off =
+      Impl.toU32s (Vector.ofFn fun j : Fin 64 => data.get! (off + j.val)) := by
+  apply Vector.ext
+  intro i hi
+  -- Both sides reduce per index `i ∈ {0..15}` to the same four-byte read
+  -- expression at `data.get! (off + 4*i + k)` for k ∈ {0..3}.  The LHS is
+  -- now an explicit `#v[..16..]` construction; the RHS goes through two
+  -- `Vector.ofFn` β-reductions plus an associativity normalization.
+  simp only [Impl.toU32sFromBytes, Impl.toU32s, Impl.beU32FromBytes, Impl.beU32,
+    Vector.getElem_ofFn, ← Nat.add_assoc]
+  interval_cases i <;> simp
 
 end SHS.Equiv.SHA256.ToU32s

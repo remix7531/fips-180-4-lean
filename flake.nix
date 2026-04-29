@@ -14,6 +14,7 @@
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
+            pkgs.gnumake
             pkgs.elan     # Lean 4 toolchain manager
             pkgs.pandoc   # HTML rendering
             lean-lsp-mcp  # Lean LSP MCP server for agentic proof development

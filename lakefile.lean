@@ -33,4 +33,7 @@ lean_lib tests where
   globs := #[.submodules `tests]
 
 lean_exe cavp where
-  root := `tests.CAVP
+  root := `tests.CAVPMain
+
+lean_exe stress where
+  root := `tests.Stress

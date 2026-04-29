@@ -46,7 +46,10 @@ namespace SHS.Equiv.SHA256.Functions
     SHS.SHA256.bigSigma0 x.toBitVec =
       ((Impl.UInt32.rotr x 2) ^^^ (Impl.UInt32.rotr x 13)
         ^^^ (Impl.UInt32.rotr x 22)).toBitVec := by
-  simp only [SHS.SHA256.bigSigma0, toBitVec_xor, toBitVec_rotr,
+  simp only [SHS.SHA256.bigSigma0, toBitVec_xor,
+    toBitVec_rotr _ _ (by decide : 0 < (2 : UInt32).toNat) (by decide : (2 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (13 : UInt32).toNat) (by decide : (13 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (22 : UInt32).toNat) (by decide : (22 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 2 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 13 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 22 < 32),
@@ -60,7 +63,10 @@ namespace SHS.Equiv.SHA256.Functions
     SHS.SHA256.bigSigma1 x.toBitVec =
       ((Impl.UInt32.rotr x 6) ^^^ (Impl.UInt32.rotr x 11)
         ^^^ (Impl.UInt32.rotr x 25)).toBitVec := by
-  simp only [SHS.SHA256.bigSigma1, toBitVec_xor, toBitVec_rotr,
+  simp only [SHS.SHA256.bigSigma1, toBitVec_xor,
+    toBitVec_rotr _ _ (by decide : 0 < (6 : UInt32).toNat) (by decide : (6 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (11 : UInt32).toNat) (by decide : (11 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (25 : UInt32).toNat) (by decide : (25 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 6 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 11 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 25 < 32),
@@ -73,7 +79,9 @@ namespace SHS.Equiv.SHA256.Functions
 @[simp] theorem smallSigma0_toBitVec (x : UInt32) :
     SHS.SHA256.smallSigma0 x.toBitVec =
       ((Impl.UInt32.rotr x 7) ^^^ (Impl.UInt32.rotr x 18) ^^^ (x >>> 3)).toBitVec := by
-  simp only [SHS.SHA256.smallSigma0, toBitVec_xor, toBitVec_rotr,
+  simp only [SHS.SHA256.smallSigma0, toBitVec_xor,
+    toBitVec_rotr _ _ (by decide : 0 < (7 : UInt32).toNat) (by decide : (7 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (18 : UInt32).toNat) (by decide : (18 : UInt32).toNat < 32),
     toBitVec_shr_of_lt _ _ (by decide : (3 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 7 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 18 < 32),
@@ -87,7 +95,9 @@ namespace SHS.Equiv.SHA256.Functions
 @[simp] theorem smallSigma1_toBitVec (x : UInt32) :
     SHS.SHA256.smallSigma1 x.toBitVec =
       ((Impl.UInt32.rotr x 17) ^^^ (Impl.UInt32.rotr x 19) ^^^ (x >>> 10)).toBitVec := by
-  simp only [SHS.SHA256.smallSigma1, toBitVec_xor, toBitVec_rotr,
+  simp only [SHS.SHA256.smallSigma1, toBitVec_xor,
+    toBitVec_rotr _ _ (by decide : 0 < (17 : UInt32).toNat) (by decide : (17 : UInt32).toNat < 32),
+    toBitVec_rotr _ _ (by decide : 0 < (19 : UInt32).toNat) (by decide : (19 : UInt32).toNat < 32),
     toBitVec_shr_of_lt _ _ (by decide : (10 : UInt32).toNat < 32),
     ROTR_eq_rotateRight _ _ (by decide : 17 < 32),
     ROTR_eq_rotateRight _ _ (by decide : 19 < 32),

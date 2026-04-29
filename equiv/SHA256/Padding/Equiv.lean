@@ -2,6 +2,7 @@ import equiv.SHA256.Padding.Layout
 import equiv.SHA256.Padding.ByteDecoding
 import equiv.SHA256.Padding.Parsing
 import equiv.SHA256.Digest
+import equiv.SHA256.ToU32s
 import equiv.Common.ArrayFold
 
 /-! # SHA-256 padding: streaming refactor of `Impl.sha256`
@@ -65,6 +66,10 @@ private theorem impl_sha256_eq_extract (data : ByteArray) (hsize : data.size < 2
       Impl.compress state (Impl.toU32s finalBlockC)) := by
   unfold Impl.sha256
   rw [if_neg (Nat.not_le.mpr hsize)]
+  -- Bridge the fast-path `toU32sFromBytes` reads (used in the impl
+  -- definition) to the `toU32s ∘ Vector.ofFn` shape the spec
+  -- equivalence is stated against.
+  simp only [SHS.Equiv.SHA256.ToU32s.toU32sFromBytes_eq_toU32s]
   rfl
 
 /-- `Impl.sha256` agrees with the cleaner block-list refactoring.

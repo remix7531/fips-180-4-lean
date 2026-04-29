@@ -77,16 +77,41 @@ theorem toBitVec_shr_of_lt (x : UInt32) (n : UInt32) (h : n.toNat < 32) :
   congr 1
   simp [Nat.mod_eq_of_lt h]
 
+/-! ## Shift-left bridge
+
+Companion to `toBitVec_shr_of_lt`: needed because the new fast `rotr`
+implementation uses `<<<` and `>>>` directly. -/
+
+/-- For an in-range shift amount, `UInt32.<<<` agrees with `BitVec.<<<`
+on the underlying bitvector. -/
+theorem toBitVec_shl_of_lt (x : UInt32) (n : UInt32) (h : n.toNat < 32) :
+    (x <<< n).toBitVec = x.toBitVec <<< n.toNat := by
+  rw [UInt32.toBitVec_shiftLeft, BitVec.shiftLeft_eq', BitVec.toNat_umod]
+  congr 1
+  simp [Nat.mod_eq_of_lt h]
+
 /-! ## Rotation bridges
 
-The spec defines `ROTR n` recursively via `BitVec.rotateRightAux`; for
-`n < 32` it coincides with `BitVec.rotateRight`, which in turn matches
-`Impl.UInt32.rotr` definitionally. -/
+`Impl.UInt32.rotr` is now defined directly via primitive `UInt32` shift/or
+ops (for ~50× perf), so the bridge to `BitVec.rotateRight` is no longer
+`rfl`; we prove it via Lean core's `BitVec.rotateRight_def`.  All
+callsites (the four `_toBitVec` lemmas in `Functions.lean`, plus
+`ROTR_eq_u32_rotr`) discharge `n.toNat < 32` from a literal `n`. -/
 
-/-- Definitional bridge: `Impl.UInt32.rotr` is `BitVec.rotateRight` on
-the underlying bitvector. -/
-@[simp] theorem toBitVec_rotr (x : UInt32) (n : UInt32) :
-    (Impl.UInt32.rotr x n).toBitVec = x.toBitVec.rotateRight n.toNat := rfl
+/-- For `n.toNat < 32`, `Impl.UInt32.rotr` agrees with `BitVec.rotateRight`
+on the underlying bitvector.  The bound is essential: for `n.toNat ≥ 32`
+the impl rotr (using primitive `UInt32` shifts which mask the amount via
+`% 2^32`) diverges from the recursive `BitVec.rotateRightAux`. -/
+theorem toBitVec_rotr (x : UInt32) (n : UInt32) (h0 : 0 < n.toNat) (h : n.toNat < 32) :
+    (Impl.UInt32.rotr x n).toBitVec = x.toBitVec.rotateRight n.toNat := by
+  unfold Impl.UInt32.rotr
+  have hn_le : n ≤ (32 : UInt32) := by
+    rw [UInt32.le_iff_toNat_le]; exact Nat.le_of_lt h
+  have h32n : ((32 : UInt32) - n).toNat = 32 - n.toNat := by
+    rw [UInt32.toNat_sub_of_le _ _ hn_le]; rfl
+  have h32n_lt : ((32 : UInt32) - n).toNat < 32 := by rw [h32n]; omega
+  rw [UInt32.toBitVec_or, toBitVec_shr_of_lt _ _ h, toBitVec_shl_of_lt _ _ h32n_lt,
+      h32n, BitVec.rotateRight_def, Nat.mod_eq_of_lt h]
 
 /-- For `n < 32`, the spec's `SHS.ROTR n` matches `BitVec.rotateRight n`. -/
 theorem ROTR_eq_rotateRight (n : Nat) (x : BitVec 32) (h : n < 32) :
@@ -99,9 +124,9 @@ theorem ROTR_eq_rotateRight (n : Nat) (x : BitVec 32) (h : n < 32) :
 /-- End-to-end bridge: spec `ROTR n.toNat` on a lifted `UInt32` equals
 the lifted impl `Impl.UInt32.rotr x n`.  This is the form needed by the
 `bigSigma`/`smallSigma` bridge proofs. -/
-theorem ROTR_eq_u32_rotr (n : UInt32) (x : UInt32) (h : n.toNat < 32) :
+theorem ROTR_eq_u32_rotr (n : UInt32) (x : UInt32) (h0 : 0 < n.toNat) (h : n.toNat < 32) :
     SHS.ROTR n.toNat x.toBitVec = (Impl.UInt32.rotr x n).toBitVec := by
-  rw [toBitVec_rotr, ROTR_eq_rotateRight _ _ h]
+  rw [toBitVec_rotr _ _ h0 h, ROTR_eq_rotateRight _ _ h]
 
 /-! ## SHR bridge -/
 

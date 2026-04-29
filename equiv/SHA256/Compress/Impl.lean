@@ -2,6 +2,7 @@ import equiv.SHA256.Lift
 import equiv.SHA256.Functions
 import equiv.SHA256.Constants
 import equiv.SHA256.Foldl.Fused
+import Mathlib.Tactic.IntervalCases
 
 /-! # Compression equivalence — implementation-side factoring
 
@@ -73,16 +74,142 @@ def implFusedStep (i : Fin 64) (acc : Impl.Block × Impl.State) :
   (block', implRoundBody i w acc.2)
 
 /-- The named factored form of the implementation's `compress`:
-`Fin.foldl 64 implFusedStep` plus the final hash add. -/
+`Fin.foldl 64 implFusedStep` plus the final hash add.
+
+This definition plays a dual role:
+1. **Pivot for the spec ↔ impl equivalence proof** — the `MatchAfter`
+   induction in `Compress/Match.lean` is stated against the per-step
+   primitives `implScheduleStep` / `implRoundBody` that compose into
+   `implFusedStep`, and `Main.lean` rewrites `Impl.compress` to this
+   form so the induction applies.
+2. **Aeneas-bridge target** — the shape (8-tuple working state +
+   16-word ring-buffer schedule, pure functional `Fin.foldl 64`, no
+   `Id.run`/`let mut`/imperative state) is precisely what an Aeneas
+   Rust→Lean extraction of SHA-256 lands in after `noncomputable`
+   lifting.  A future consumer wanting to refine an extraction against
+   our spec needs only to prove `aeneas_compress = implCompressFoldl`
+   (mostly type-level rewrites between `Std.U32` and `UInt32`); the
+   spec ↔ `implCompressFoldl` half is what this project verifies. -/
 def implCompressFoldl (state : Impl.State) (block : Impl.Block) : Impl.State :=
   let (_, s') := Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)
   Vector.zipWith (· + ·) state s'
 
-/-- The factored form agrees with the original `Impl.compress` by
-definition; lets `Main.lean` rewrite `Impl.compress` to the `Fin.foldl`
-form on which the cross-side meet is stated. -/
+/-- A chain of eight `Vector.set`s at indices 0..7 collapses to the
+literal vector with those values.  Used to bridge `Impl.compress`'s
+in-place-update body (which is faster: the sequential `Vector.set`s
+become refcount-1 in-place mutations under codegen) to
+`implFusedStep`'s `#v[...]` form (which is the natural shape for the
+spec equivalence proofs). -/
+private theorem set8_eq_mk {α : Type _} (s : Vector α 8) (v0 v1 v2 v3 v4 v5 v6 v7 : α) :
+    (((((((s.set 0 v0).set 1 v1).set 2 v2).set 3 v3).set 4 v4).set 5 v5).set 6 v6).set 7 v7
+      = #v[v0, v1, v2, v3, v4, v5, v6, v7] := by
+  apply Vector.ext
+  intro i hi
+  interval_cases i <;> simp
+
+/-- After `simp only [set8_eq_mk]` collapses both the per-round set chain
+and the final hash-add set chain in `Impl.compress` to `#v[...]` form,
+this lemma closes the bridge to `implCompressFoldl`'s `Vector.zipWith`
+epilogue. -/
+private theorem zipWith_add_eq_mk (state s' : Impl.State) :
+    Vector.zipWith (· + ·) state s' =
+      #v[ state[0] + s'[0], state[1] + s'[1], state[2] + s'[2], state[3] + s'[3],
+          state[4] + s'[4], state[5] + s'[5], state[6] + s'[6], state[7] + s'[7] ] := by
+  apply Vector.ext
+  intro i hi
+  interval_cases i <;> simp
+
+/-! ### Bridge to `Impl.compress`'s `RoundState`-shaped fold
+
+`Impl.compress` runs `Fin.foldl 64 Impl.roundStep` over a `RoundState`
+struct; `implCompressFoldl` runs `Fin.foldl 64 implFusedStep` over a
+`(Block, Vector UInt32 8)` pair.  Both share the same outer
+`Fin.foldl 64` shape, so the bridge is a per-iteration `RoundState ↔
+(Block, State)` correspondence carried through fold-homomorphism. -/
+
+/-- The state correspondence: a `RoundState` on the impl side maps to
+`(rs.schedule, #v[rs.a, …, rs.h])` on the equiv side. -/
+private def roundStateToPair (rs : Impl.RoundState) : Impl.Block × Impl.State :=
+  (rs.schedule, #v[rs.a, rs.b, rs.c, rs.d, rs.e, rs.f, rs.g, rs.h])
+
+/-- Generic `Fin.foldl` homomorphism: if a per-step morphism `f`
+intertwines two step functions, it intertwines their folds. -/
+private theorem fin_foldl_hom {α β : Type _} : ∀ {n : Nat}
+    (f : α → β) (g : α → Fin n → α) (h : β → Fin n → β),
+    (∀ a i, f (g a i) = h (f a) i) → ∀ (init : α),
+    f (Fin.foldl n g init) = Fin.foldl n h (f init)
+  | 0, _, _, _, _, _ => by simp [Fin.foldl_zero]
+  | m + 1, f, g, h, step_eq, init => by
+    rw [Fin.foldl_succ, Fin.foldl_succ]
+    -- Apply IH at `m` with the new init `g init 0` (which corresponds
+    -- to `h (f init) 0` via `step_eq init 0`).
+    rw [fin_foldl_hom f (fun x (j : Fin m) => g x j.succ)
+                       (fun x (j : Fin m) => h x j.succ)
+          (fun a j => step_eq a j.succ) (g init 0)]
+    rw [step_eq init 0]
+
+/-- One impl round equals one equiv `implFusedStep` after the
+correspondence.  Both bodies have the same structural shape; the
+proof is unfold + `Vector.ext` per indexed slot. -/
+private theorem roundStep_corresponds (rs : Impl.RoundState) (i : Fin 64) :
+    roundStateToPair (Impl.roundStep rs i) = implFusedStep i (roundStateToPair rs) := by
+  unfold roundStateToPair Impl.roundStep implFusedStep implScheduleStep implRoundBody
+  apply Prod.ext
+  · -- Block component: identical conditional schedule update.
+    rfl
+  · -- State component: literal 8-vector vs. literal 8-vector.
+    apply Vector.ext
+    intro k hk
+    interval_cases k <;> rfl
+
+/-- The impl's `Impl.compress` reduces (modulo the `unroll64`/`Fin.foldl`
+codegen-vs-proof equivalence) to a `Fin.foldl 64 Impl.roundStep` over
+`RoundState` followed by the `#v[state[i] + final.field]` hash add. -/
+private theorem impl_compress_eq_foldl_form (state : Impl.State) (block : Impl.Block) :
+    Impl.compress state block =
+      let final := Fin.foldl 64 Impl.roundStep (Impl.RoundState.ofState state block)
+      #v[ state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
+          state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h ] := by
+  unfold Impl.compress
+  simp only [SHS.Impl.Unroll.unroll64_eq_foldl]
+
+/-- Public bridge: the impl's `RoundState`-shaped fold equals the
+equiv's `(Block, State)`-shaped fold, plus matching final hash adds. -/
 theorem impl_compress_eq_foldl (state : Impl.State) (block : Impl.Block) :
-    implCompressFoldl state block = Impl.compress state block := rfl
+    implCompressFoldl state block = Impl.compress state block := by
+  rw [impl_compress_eq_foldl_form]
+  unfold implCompressFoldl
+  -- Apply the fold homomorphism with `f = roundStateToPair`.
+  have h_fold := fin_foldl_hom (n := 64) roundStateToPair
+    Impl.roundStep (fun acc i => implFusedStep i acc)
+    roundStep_corresponds (Impl.RoundState.ofState state block)
+  -- The starting RoundState corresponds to `(block, state)`.
+  have h_init : roundStateToPair (Impl.RoundState.ofState state block) = (block, state) := by
+    unfold roundStateToPair Impl.RoundState.ofState
+    apply Prod.ext
+    · rfl
+    · apply Vector.ext
+      intro k hk
+      interval_cases k <;> rfl
+  rw [h_init] at h_fold
+  -- Destruct the equiv-side fold result and the impl-side `let`-bindings.
+  set final_rs := Fin.foldl 64 Impl.roundStep
+    (Impl.RoundState.ofState state block)
+  set final_pair := Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)
+  show Vector.zipWith (fun x1 x2 => x1 + x2) state final_pair.2 =
+    #v[ state[0] + final_rs.a, state[1] + final_rs.b, state[2] + final_rs.c, state[3] + final_rs.d,
+        state[4] + final_rs.e, state[5] + final_rs.f, state[6] + final_rs.g, state[7] + final_rs.h ]
+  -- `final_pair.2 = #v[final_rs.fields]` by the fold equation.
+  have h_pair_eq : final_pair.2 =
+      #v[final_rs.a, final_rs.b, final_rs.c, final_rs.d,
+         final_rs.e, final_rs.f, final_rs.g, final_rs.h] := by
+    have h := h_fold
+    unfold roundStateToPair at h
+    exact congrArg Prod.snd h.symm
+  rw [h_pair_eq, zipWith_add_eq_mk]
+  apply Vector.ext
+  intro i hi
+  interval_cases i <;> rfl
 
 /-! ## Per-step bridges
 
