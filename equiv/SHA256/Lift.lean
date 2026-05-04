@@ -25,25 +25,14 @@ namespace SHS.Equiv.SHA256.Lift
 /-! ## Lifting maps -/
 
 /-- Lift the implementation's working state (eight `UInt32`s) to the
-spec's `HashValue` (an `Array` of eight `BitVec 32`s). -/
+spec's `HashValue` (a `Vector` of eight `BitVec 32`s). -/
 def toSpecState (s : Impl.State) : HashValue :=
-  s.toArray.map UInt32.toBitVec
+  s.map UInt32.toBitVec
 
 /-- Lift the implementation's message block (sixteen `UInt32`s) to the
-spec's `Block` (an `Array` of sixteen `BitVec 32`s). -/
+spec's `Block` (a `Vector` of sixteen `BitVec 32`s). -/
 def toSpecBlock (b : Impl.Block) : Block :=
-  b.toArray.map UInt32.toBitVec
-
-/-! ## Size simp lemmas
-
-Both lifting maps preserve size; downstream `simp` uses these to
-discharge bounds for `getElem!` accesses. -/
-
-@[simp] theorem size_toSpecState (s : Impl.State) : (toSpecState s).size = 8 := by
-  simp [toSpecState]
-
-@[simp] theorem size_toSpecBlock (b : Impl.Block) : (toSpecBlock b).size = 16 := by
-  simp [toSpecBlock]
+  b.map UInt32.toBitVec
 
 /-! ## Indexing simp lemmas
 
@@ -53,18 +42,22 @@ the bound is automatic. -/
 
 @[simp] theorem getElem!_toSpecState (s : Impl.State) (i : Fin 8) :
     (toSpecState s)[i.val]! = s[i].toBitVec := by
-  simp [toSpecState, getElem!_pos, Array.getElem_map, Vector.getElem_toArray]
+  simp [toSpecState, getElem!_pos]
 
 @[simp] theorem getElem!_toSpecBlock (b : Impl.Block) (i : Fin 16) :
     (toSpecBlock b)[i.val]! = b[i].toBitVec := by
-  simp [toSpecBlock, getElem!_pos, Array.getElem_map, Vector.getElem_toArray]
+  simp [toSpecBlock, getElem!_pos]
 
 /-! ## Initial-state bridge -/
 
 /-- The impl's initial hash value `H256_256` lifts to the spec's `H0_256`. -/
 @[simp] theorem toSpecState_H256_256 :
     toSpecState Impl.H256_256 = SHS.SHA256.H0_256 := by
+  apply Vector.ext
+  intro i hi
   unfold toSpecState Impl.H256_256 SHS.SHA256.H0_256
-  simp [Array.map]
+  rw [Vector.getElem_map]
+  match i, hi with
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
 
 end SHS.Equiv.SHA256.Lift

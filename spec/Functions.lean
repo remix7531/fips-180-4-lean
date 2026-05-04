@@ -30,9 +30,9 @@ produces a 32-bit word as output. The function $f_t(x, y, z)$ is defined as foll
 namespace SHA1 --#
 
 scoped notation "Word" => BitVec 32 --#
-scoped notation "Block" => Array (BitVec 32) --#
-scoped notation "HashValue" => Array (BitVec 32) --#
-scoped notation "Schedule" => Array (BitVec 32) --#
+scoped notation "Block" => Vector (BitVec 32) 16 --#
+scoped notation "HashValue" => Vector (BitVec 32) 5 --#
+scoped notation "Schedule" => Vector (BitVec 32) 80 --#
 
 /-! <!-- eqn:4.1 --> -/
 
@@ -55,9 +55,9 @@ is a new 32-bit word.
 namespace SHA256 --#
 
 scoped notation "Word" => BitVec 32 --#
-scoped notation "Block" => Array (BitVec 32) --#
-scoped notation "HashValue" => Array (BitVec 32) --#
-scoped notation "Schedule" => Array (BitVec 32) --#
+scoped notation "Block" => Vector (BitVec 32) 16 --#
+scoped notation "HashValue" => Vector (BitVec 32) 8 --#
+scoped notation "Schedule" => Vector (BitVec 32) 64 --#
 
 /-! <!-- eqn:4.2 --> -/
 
@@ -96,9 +96,9 @@ result of each function is a new 64-bit word.
 namespace SHA512 --#
 
 scoped notation "Word" => BitVec 64 --#
-scoped notation "Block" => Array (BitVec 64) --#
-scoped notation "HashValue" => Array (BitVec 64) --#
-scoped notation "Schedule" => Array (BitVec 64) --#
+scoped notation "Block" => Vector (BitVec 64) 16 --#
+scoped notation "HashValue" => Vector (BitVec 64) 8 --#
+scoped notation "Schedule" => Vector (BitVec 64) 80 --#
 
 /-! <!-- eqn:4.8 --> -/
 
@@ -158,7 +158,7 @@ prime numbers. In hex, these constant words are (from left to right)
 
 namespace SHA256 --#
 
-def K : Schedule := #[
+def K : Schedule := #v[
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
   0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -182,7 +182,7 @@ first eighty prime numbers. In hex, these constant words are (from left to right
 
 namespace SHA512 --#
 
-def K : Schedule := #[
+def K : Schedule := #v[
   0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
   0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,
   0xd807aa98a3030242, 0x12835b0145706fbe, 0x243185be4ee4b28c, 0x550c7dc3d5ffb4e2,

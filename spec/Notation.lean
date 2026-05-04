@@ -137,8 +137,8 @@ theorem ROTL_eq_ROTR {w n m : Nat} (hn : n < w) (hm : m < w) (heq : n + m = w)
 --#--
   := by
   unfold ROTL ROTR
-  have h1 : w - n = m := by omega
-  have h2 : w - m = n := by omega
+  have h1 : w - n = m := by grind
+  have h2 : w - m = n := by grind
   rw [h1, h2, BitVec.or_comm]
 --#--
 
@@ -149,8 +149,8 @@ theorem ROTR_eq_ROTL {w n m : Nat} (hn : n < w) (hm : m < w) (heq : n + m = w)
 --#--
   := by
   unfold ROTR ROTL
-  have h1 : w - n = m := by omega
-  have h2 : w - m = n := by omega
+  have h1 : w - n = m := by grind
+  have h2 : w - m = n := by grind
   rw [h1, h2, BitVec.or_comm]
 --#--
 

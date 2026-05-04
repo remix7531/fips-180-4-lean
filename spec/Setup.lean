@@ -62,4 +62,15 @@ instance (n : Nat) [h : Decidable (0 < n ∧ n < 512 ∧ n ≠ 384)] :
 set_option autoImplicit true
 
 end SHS
+
+/-- `do`-notation sugar for indexed assignment on `Vector`/`Array` (and any
+    type with a `.set i v` method): `arr[i] := v` desugars to
+    `arr := arr.set i v`. Lean's built-in indexed-assignment doElem only
+    fires for a few specific types; this overrides it for any `mut` binding,
+    so `Vector` works too. The implicit bound proof is discharged by
+    `get_elem_tactic` on the `.set` call. -/
+syntax (name := doSetMut) (priority := high)
+  ident "[" term "]" " := " term : doElem
+macro_rules
+  | `(doElem| $x:ident[$i] := $v) => `(doElem| $x:ident := ($x).set $i $v)
 --#--

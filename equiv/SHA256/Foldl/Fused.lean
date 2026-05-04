@@ -42,8 +42,24 @@ indices stay equal. -/
 theorem getElem!_specScheduleStep_ne (M : Block) (t : Nat) (W : Schedule)
     (j : Nat) (hj : j ≠ t) :
     (specScheduleStep M t W)[j]! = W[j]! := by
+  -- Reduce to the Vector `set!` / `getElem!` interplay.
+  have key : ∀ (v : BitVec 32), (W.set! t v)[j]! = W[j]! := by
+    intro v
+    by_cases hj' : j < 64
+    · rw [SHS.Equiv.VecBridge.getElem_bang_eq_getElem _ _ hj',
+          SHS.Equiv.VecBridge.getElem_bang_eq_getElem _ _ hj']
+      by_cases ht : t < 64
+      · rw [SHS.Equiv.VecBridge.set_bang_eq_set _ _ ht, Vector.getElem_set,
+            if_neg (Ne.symm hj)]
+      · have hwid : W.set! t v = W := by
+          apply Vector.toArray_inj.mp
+          simp [Vector.toArray_set!, Array.set!_eq_setIfInBounds, Array.setIfInBounds]
+          intro h; grind
+        rw [hwid]
+    · simp [getElem!_neg, hj', Vector.toArray_set!,
+            Array.set!_eq_setIfInBounds, Array.setIfInBounds]
   unfold specScheduleStep
-  split <;> · simp [Array.getElem!_eq_getD, Ne.symm hj]
+  split <;> apply key
 
 /-- The strictly-below specialisation of `getElem!_specScheduleStep_ne`.
 
@@ -140,7 +156,7 @@ private theorem fused_aux (M : Block) (s₀ : SpecVars) :
 body interleaved in a single fold over `(Schedule, SpecVars)`. -/
 def specCompressFused (H : HashValue) (M : Block) : HashValue :=
   addH H (Fin.foldl 64 (fun acc (t : Fin 64) => specFusedStep M t.val acc)
-    (Array.replicate 64 default, initVars H)).2
+    (Vector.replicate 64 default, initVars H)).2
 
 /-- The spec's `compress` equals its fused pure-foldl form
 (`specCompressFused`).  This is the shape needed to match the
@@ -152,7 +168,7 @@ theorem spec_compress_eq_fused (H : HashValue) (M : Block) :
   rw [spec_compress_eq_seq H M]
   unfold specCompressSeq
   congr 1
-  rw [fused_aux M (initVars H) 64 (Array.replicate 64 default)]
+  rw [fused_aux M (initVars H) 64 (Vector.replicate 64 default)]
   rw [← schedule_eq_foldl M]
 
 end SHS.Equiv.SHA256.Foldl.Fused

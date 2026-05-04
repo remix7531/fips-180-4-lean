@@ -1,6 +1,18 @@
 --#--
 import spec.Preprocessing
 set_option autoImplicit true
+
+-- Bounds discharge for `Vector` accessors used inside the `for h : t in [a:b] do`
+-- ranges below.  `Std.Legacy.Range` membership unfolds to `start ≤ t ∧ t < stop`,
+-- which a small `have` chain hands to `grind`.
+local macro_rules
+  | `(tactic| get_elem_tactic) =>
+    `(tactic|
+        first
+        | grind
+        | (first
+              | (have := ‹_ ∈ _›.upper; have := ‹_ ∈ _›.lower; grind)
+              | (have := ‹_ ∈ _›.upper; grind)))
 --#--
 
 namespace SHS --#
@@ -51,13 +63,13 @@ the following steps:
 namespace SHA1 --#
 
 def schedule (M : Block) : Schedule := Id.run do
-  let mut W : Schedule := Array.replicate 80 default
+  let mut W : Schedule := Vector.replicate 80 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
-  for t in [0:16] do
-    W := W.set! t M[t]!
+  for h : t in [0:16] do
+    W[t] := M[t]
   -- For 16 ≤ t ≤ 79: W_t = ROTL^1(W_{t-3} ⊕ W_{t-8} ⊕ W_{t-14} ⊕ W_{t-16})
-  for t in [16:80] do
-    W := W.set! t (ROTL 1 (W[t-3]! ⊕ W[t-8]! ⊕ W[t-14]! ⊕ W[t-16]!))
+  for h : t in [16:80] do
+    W[t] := ROTL 1 (W[t-3] ⊕ W[t-8] ⊕ W[t-14] ⊕ W[t-16])
   return W
 
 /-!  -/
@@ -66,21 +78,21 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
   -- Step 2. Initialize the five working variables a, b, c, d, e with H^(i-1)
-  let mut a := H[0]!
-  let mut b := H[1]!
-  let mut c := H[2]!
-  let mut d := H[3]!
-  let mut e := H[4]!
+  let mut a := H[0]
+  let mut b := H[1]
+  let mut c := H[2]
+  let mut d := H[3]
+  let mut e := H[4]
   -- Step 3. For t = 0 to 79
-  for t in [0:80] do
-    let T := ROTL 5 a + f t b c d + e + K t + W[t]!
+  for h : t in [0:80] do
+    let T := ROTL 5 a + f t b c d + e + K t + W[t]
     e := d
     d := c
     c := ROTL 30 b
     b := a
     a := T
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #[a + H[0]!, b + H[1]!, c + H[2]!, d + H[3]!, e + H[4]!]
+  return #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
 
 /-!
 After repeating steps one through four a total of $N$ times (i.e., after processing
@@ -92,7 +104,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 def sha1 (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4]
 
 end SHA1 --#
 
@@ -121,28 +133,29 @@ described in Sec. 6.1.1 has been performed, the processing of $M^{(i)}$ is as fo
 namespace SHA1 --#
 
 def compress_alt (H : HashValue) (M : Block) : HashValue := Id.run do
-  -- Step 1. For t = 0 to 15: W_t = M_t^(i)
-  let mut W : Schedule := M
+  -- Step 1. For t = 0 to 15: W_t = M_t^(i).  Note: the SHA-1 alternate method's
+  -- circular schedule has only 16 words; we therefore use `Block` (size 16) here
+  -- in place of the 80-word `Schedule` used by the standard method.
+  let mut W : Block := M
   -- Step 2. Initialize the five working variables a, b, c, d, e with H^(i-1)
-  let mut a := H[0]!
-  let mut b := H[1]!
-  let mut c := H[2]!
-  let mut d := H[3]!
-  let mut e := H[4]!
+  let mut a := H[0]
+  let mut b := H[1]
+  let mut c := H[2]
+  let mut d := H[3]
+  let mut e := H[4]
   -- Step 3. For t = 0 to 79
-  for t in [0:80] do
+  for h : t in [0:80] do
     let s := t % 16  -- s = t ∧ MASK, where MASK = 0x0000000f
     if t ≥ 16 then
-      W := W.set! s
-        (ROTL 1 (W[(s+13) % 16]! ⊕ W[(s+8) % 16]! ⊕ W[(s+2) % 16]! ⊕ W[s]!))
-    let T := ROTL 5 a + f t b c d + e + K t + W[s]!
+      W[s] := ROTL 1 (W[(s+13) % 16] ⊕ W[(s+8) % 16] ⊕ W[(s+2) % 16] ⊕ W[s])
+    let T := ROTL 5 a + f t b c d + e + K t + W[s]
     e := d
     d := c
     c := ROTL 30 b
     b := a
     a := T
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #[a + H[0]!, b + H[1]!, c + H[2]!, d + H[3]!, e + H[4]!]
+  return #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
 
 /-!
 After repeating steps one through four a total of $N$ times (i.e., after processing
@@ -154,7 +167,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 def sha1_alt (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress_alt H0
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4]
 
 /-!
 The FIPS 180-4 §6.1.3 prose claims that this alternate method yields the
@@ -200,13 +213,13 @@ using the following steps:
 namespace SHA256 --#
 
 def schedule (M : Block) : Schedule := Id.run do
-  let mut W : Schedule := Array.replicate 64 default
+  let mut W : Schedule := Vector.replicate 64 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
-  for t in [0:16] do
-    W := W.set! t M[t]!
+  for h : t in [0:16] do
+    W[t] := M[t]
   -- For 16 ≤ t ≤ 63: W_t = σ_1^(256)(W_{t-2}) + W_{t-7} + σ_0^(256)(W_{t-15}) + W_{t-16}
-  for t in [16:64] do
-    W := W.set! t (smallSigma1 W[t-2]! + W[t-7]! + smallSigma0 W[t-15]! + W[t-16]!)
+  for h : t in [16:64] do
+    W[t] := smallSigma1 W[t-2] + W[t-7] + smallSigma0 W[t-15] + W[t-16]
   return W
 
 /-!  -/
@@ -215,17 +228,17 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
   -- Step 2. Initialize the eight working variables a..h with H^(i-1)
-  let mut a := H[0]!
-  let mut b := H[1]!
-  let mut c := H[2]!
-  let mut d := H[3]!
-  let mut e := H[4]!
-  let mut f := H[5]!
-  let mut g := H[6]!
-  let mut h := H[7]!
+  let mut a := H[0]
+  let mut b := H[1]
+  let mut c := H[2]
+  let mut d := H[3]
+  let mut e := H[4]
+  let mut f := H[5]
+  let mut g := H[6]
+  let mut h := H[7]
   -- Step 3. For t = 0 to 63
-  for t in [0:64] do
-    let T1 := h + bigSigma1 e + Ch e f g + K[t]! + W[t]!
+  for ht : t in [0:64] do
+    let T1 := h + bigSigma1 e + Ch e f g + K[t] + W[t]
     let T2 := bigSigma0 a + Maj a b c
     h := g
     g := f
@@ -236,9 +249,9 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
     b := a
     a := T1 + T2
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #[
-    a + H[0]!, b + H[1]!, c + H[2]!, d + H[3]!,
-    e + H[4]!, f + H[5]!, g + H[6]!, h + H[7]!
+  return #v[
+    a + H[0], b + H[1], c + H[2], d + H[3],
+    e + H[4], f + H[5], g + H[6], h + H[7]
   ]
 
 /-!
@@ -252,7 +265,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \|
 def sha256 (M : Message) (_h : M.length < 2 ^ 64) : Digest 256 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_256
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]! ++ H[7]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4] ++ H[5] ++ H[6] ++ H[7]
 
 end SHA256 --#
 
@@ -275,7 +288,7 @@ namespace SHA256 --#
 def sha224 (M : Message) (_h : M.length < 2 ^ 64) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_224
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4] ++ H[5] ++ H[6]
 
 end SHA256 --#
 
@@ -311,13 +324,13 @@ using the following steps:
 namespace SHA512 --#
 
 def schedule (M : Block) : Schedule := Id.run do
-  let mut W : Schedule := Array.replicate 80 default
+  let mut W : Schedule := Vector.replicate 80 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
-  for t in [0:16] do
-    W := W.set! t M[t]!
+  for h : t in [0:16] do
+    W[t] := M[t]
   -- For 16 ≤ t ≤ 79: W_t = σ_1^(512)(W_{t-2}) + W_{t-7} + σ_0^(512)(W_{t-15}) + W_{t-16}
-  for t in [16:80] do
-    W := W.set! t (smallSigma1 W[t-2]! + W[t-7]! + smallSigma0 W[t-15]! + W[t-16]!)
+  for h : t in [16:80] do
+    W[t] := smallSigma1 W[t-2] + W[t-7] + smallSigma0 W[t-15] + W[t-16]
   return W
 
 /-!  -/
@@ -326,24 +339,24 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
   -- Step 2. Initialize the eight working variables a..h with H^(i-1)
-  let mut a := H[0]!
-  let mut b := H[1]!
-  let mut c := H[2]!
-  let mut d := H[3]!
-  let mut e := H[4]!
-  let mut f := H[5]!
-  let mut g := H[6]!
-  let mut h := H[7]!
+  let mut a := H[0]
+  let mut b := H[1]
+  let mut c := H[2]
+  let mut d := H[3]
+  let mut e := H[4]
+  let mut f := H[5]
+  let mut g := H[6]
+  let mut h := H[7]
   -- Step 3. For t = 0 to 79
-  for t in [0:80] do
-    let T1 := h + bigSigma1 e + Ch e f g + K[t]! + W[t]!
+  for ht : t in [0:80] do
+    let T1 := h + bigSigma1 e + Ch e f g + K[t] + W[t]
     let T2 := bigSigma0 a + Maj a b c
     h := g; g := f; f := e; e := d + T1
     d := c; c := b; b := a; a := T1 + T2
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #[
-    a + H[0]!, b + H[1]!, c + H[2]!, d + H[3]!,
-    e + H[4]!, f + H[5]!, g + H[6]!, h + H[7]!
+  return #v[
+    a + H[0], b + H[1], c + H[2], d + H[3],
+    e + H[4], f + H[5], g + H[6], h + H[7]
   ]
 
 /-!
@@ -357,7 +370,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)} \|
 def sha512 (M : Message) (_h : M.length < 2 ^ 128) : Digest 512 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]! ++ H[7]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4] ++ H[5] ++ H[6] ++ H[7]
 
 end SHA512 --#
 
@@ -380,7 +393,7 @@ namespace SHA512 --#
 def sha384 (M : Message) (_h : M.length < 2 ^ 128) : Digest 384 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_384
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]!
+  H[0] ++ H[1] ++ H[2] ++ H[3] ++ H[4] ++ H[5]
 
 end SHA512 --#
 

@@ -72,7 +72,7 @@ structure MatchAfter
 Base case for `MatchAfter_iter`. -/
 theorem MatchAfter_zero
     (state : Impl.State) (block : Impl.Block) :
-    MatchAfter block block state (Array.replicate 64 default)
+    MatchAfter block block state (Vector.replicate 64 default)
       (initVars (toSpecState state)) 0 where
   wsize := by simp
   vars k := by rw [initVars_toSpecState_getElem]
@@ -140,11 +140,20 @@ theorem MatchAfter_step
       have hkn : k ≠ n := Nat.ne_of_lt hk_lt
       have hold := hring k hk_lt (by omega)
       have hkW : k < W.size := by simp only [hWsize]; omega
+      have hk64 : k < 64 := by simp at hkW; exact hkW
+      have hn64 : n < 64 := hn
       have hspec_k : (specScheduleStep (toSpecBlock block₀) n W)[k]! = W[k]! := by
         unfold specScheduleStep
-        rw [getElem!_pos _ k (by split <;> simp [hkW])]
+        have hsize_post : ∀ v : Word, k < (W.set! n v).toArray.size := by
+          intro v; simp; exact hk64
         rw [getElem!_pos _ k hkW]
-        split <;> exact Array.getElem_setIfInBounds_ne hkW hkn.symm
+        split
+        · rw [getElem!_pos _ k hk64]
+          rw [SHS.Equiv.VecBridge.set_bang_eq_set _ _ hn64,
+              Vector.getElem_set_ne hn64 hk64 hkn.symm]
+        · rw [getElem!_pos _ k hk64]
+          rw [SHS.Equiv.VecBridge.set_bang_eq_set _ _ hn64,
+              Vector.getElem_set_ne hn64 hk64 hkn.symm]
       rw [hspec_k]
       by_cases hn16 : n < 16
       · unfold implScheduleStep
@@ -183,7 +192,7 @@ theorem MatchAfter_iter
     let spec_acc :=
       Fin.foldl n (fun acc (i : Fin n) =>
         specFusedStep (toSpecBlock block) i.val acc)
-        (Array.replicate 64 default, initVars (toSpecState state))
+        (Vector.replicate 64 default, initVars (toSpecState state))
     MatchAfter block impl_acc.1 impl_acc.2 spec_acc.1 spec_acc.2 n := by
   induction n with
   | zero =>
@@ -213,30 +222,31 @@ theorem toSpecState_implCompressFoldl
         (block, state)).2[k]'hk).toBitVec =
       ((Fin.foldl 64
           (fun acc (t : Fin 64) => specFusedStep (toSpecBlock block) t.val acc)
-        (Array.replicate 64 default, initVars (toSpecState state))).2[k]'hk) := by
+        (Vector.replicate 64 default, initVars (toSpecState state))).2[k]'hk) := by
     intro k hk
     have := hvars ⟨k, hk⟩
     convert this using 2
-  -- `Nat`-indexed access at literal `k` against the `Array.map` form
+  -- `Nat`-indexed access at literal `k` against the `Vector.map` form
   -- that `unfold toSpecState` exposes inside the goal.
   have getElem!_lit : ∀ (k : Nat) (h : k < 8),
-      (state.toArray.map UInt32.toBitVec)[k]! = (state[k]'h).toBitVec := by
+      (state.map UInt32.toBitVec)[k]! = (state[k]'h).toBitVec := by
     intro k h
     have := getElem!_toSpecState state ⟨k, h⟩
     simpa [toSpecState] using this
-  unfold implCompressFoldl specCompressFused addH
-  refine Array.ext ?_ ?_
-  · simp [toSpecState]
-  · intro k hk1 _
-    simp only [toSpecState, Array.size_map, Vector.size_toArray] at hk1
-    interval_cases k <;>
-      (show (toSpecState _)[_] = _
-       unfold toSpecState
-       simp only [Array.getElem_map, Vector.getElem_toArray,
-                  Vector.getElem_zipWith, toBitVec_add,
-                  List.getElem_toArray, List.getElem_cons_zero,
-                  List.getElem_cons_succ]
-       rw [hvars' _ (by decide), getElem!_lit _ (by decide)]
-       ac_rfl)
+  -- Both sides agree at every index `k < 8`; reduce by Vector.ext.
+  apply Vector.ext
+  intro k hk
+  unfold implCompressFoldl specCompressFused addH toSpecState
+  rw [Vector.getElem_map, Vector.getElem_zipWith, toBitVec_add]
+  rw [hvars' k hk]
+  match k, hk with
+  | 0, _ => simp; ac_rfl
+  | 1, _ => simp; ac_rfl
+  | 2, _ => simp; ac_rfl
+  | 3, _ => simp; ac_rfl
+  | 4, _ => simp; ac_rfl
+  | 5, _ => simp; ac_rfl
+  | 6, _ => simp; ac_rfl
+  | 7, _ => simp; ac_rfl
 
 end SHS.Equiv.SHA256.Compress.Match

@@ -67,6 +67,29 @@ theorem forIn_id_eq_Fin_foldl_offset {β : Type _} (a b : Nat) (init : β) (f : 
   simp only [Nat.add_comm]
   rfl
 
+/-! ## `forIn'` ↔ `forIn` proof erasure
+
+The spec uses `for h : t in [a:b]` (which desugars to `forIn'`) so that
+`get_elem_tactic` can use the membership proof `h : t ∈ [a:b]` to
+discharge `Vector` index bounds.  When the body's behaviour does not
+depend on which particular membership proof is fed to it (i.e. it can
+be expressed as a function of the index alone, with bounds proved
+externally), we can erase the `'` and fall back to ordinary `forIn`.
+
+This is the bridge that lets the spec's two-loop `Id.run do` form be
+rewritten with the existing `forIn_id_eq_Fin_foldl`. -/
+
+/-- Pure-yield `forIn'` over `[a:b]` in the identity monad equals the
+plain `forIn` form, when the body factors through the index alone. -/
+theorem forIn'_id_eq_forIn {β : Type _} (a b : Nat) (init : β)
+    (f : Nat → β → β) :
+    Id.run (forIn' [a:b] init (fun t _ s => pure (ForInStep.yield (f t s)))) =
+      Id.run (forIn [a:b] init (fun t s => pure (ForInStep.yield (f t s)))) := by
+  rw [Std.Legacy.Range.forIn'_eq_forIn'_range', Std.Legacy.Range.forIn_eq_forIn_range']
+  simp only [Id.run, List.forIn'_pure_yield_eq_foldl, List.forIn_pure_yield_eq_foldl]
+  congr 1
+  exact List.foldl_attach (l := List.range' a [a:b].size) (f := fun b a => f a b) (b := init)
+
 /-! ## Splitting and transporting folds -/
 
 /-- Split a single `Fin.foldl m` whose body switches on `i < n` into two
@@ -126,3 +149,24 @@ theorem fin_foldl_transport {α β : Type _} (n : Nat)
               (fun a i => h a i.castSucc)]
 
 end SHS.Equiv.Loop
+
+/-! ## Vector `set!`/`set` and `getElem!`/`getElem` bridges (in-bounds)
+
+The spec uses bounds-checked `Vector.set` / `_[i]` (in-bounds via the
+`forIn'` membership proof); the equiv layer's `Nat`-indexed step
+functions use the panicking `Vector.set!` / `_[i]!`.  The two agree
+on in-bounds indices. -/
+
+namespace SHS.Equiv.VecBridge
+
+@[simp] theorem set_bang_eq_set {α : Type _} {n : Nat} (xs : Vector α n) (i : Nat)
+    (h : i < n) (x : α) : xs.set! i x = xs.set i x := by
+  apply Vector.toArray_inj.mp
+  simp [Vector.toArray_set!, Vector.toArray_set, Array.set!_eq_setIfInBounds,
+        Array.setIfInBounds, h]
+
+theorem getElem_bang_eq_getElem {α : Type _} [Inhabited α] {n : Nat}
+    (xs : Vector α n) (i : Nat) (h : i < n) : xs[i]! = xs[i] := by
+  simp [getElem!_pos, h]
+
+end SHS.Equiv.VecBridge

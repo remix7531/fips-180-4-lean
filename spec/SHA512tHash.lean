@@ -23,7 +23,7 @@ def sha512_224 (M : Message) (_h : M.length < 2 ^ 128) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512_224
   -- truncate H^(N) to its left-most 224 bits
-  (H[0]! ++ H[1]! ++ H[2]! ++ H[3]!).leftmost 224
+  (H[0] ++ H[1] ++ H[2] ++ H[3]).leftmost 224
 
 end SHA512 --#
 
@@ -44,7 +44,7 @@ namespace SHA512 --#
 def sha512_256 (M : Message) (_h : M.length < 2 ^ 128) : Digest 256 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512_256
-  H[0]! ++ H[1]! ++ H[2]! ++ H[3]!
+  H[0] ++ H[1] ++ H[2] ++ H[3]
 
 end SHA512 --#
 

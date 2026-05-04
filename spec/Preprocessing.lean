@@ -110,7 +110,10 @@ namespace SHA256 --#
 def parse (M : Message) : Array Block :=
   -- Split into 512-bit blocks, then split each block into sixteen 32-bit words.
   M.toChunks 512 |>.toArray |>.map fun b =>
-    b.toChunks 32 |>.map Word.fromBits |>.toArray
+    let arr := b.toChunks 32 |>.map Word.fromBits |>.toArray
+    -- Lift to a 16-word `Vector`.  Out-of-spec inputs (block size ≠ 512) yield
+    -- an `Array` of size ≠ 16; we pad/truncate via `Vector.ofFn` for totality.
+    Vector.ofFn (n := 16) fun i => arr[i.val]?.getD 0
 
 end SHA256 --#
 
@@ -137,7 +140,10 @@ namespace SHA512 --#
 def parse (M : Message) : Array Block :=
   -- Split into 1024-bit blocks, then split each block into sixteen 64-bit words.
   M.toChunks 1024 |>.toArray |>.map fun b =>
-    b.toChunks 64 |>.map Word.fromBits |>.toArray
+    let arr := b.toChunks 64 |>.map Word.fromBits |>.toArray
+    -- Lift to a 16-word `Vector`.  Out-of-spec inputs (block size ≠ 1024) yield
+    -- an `Array` of size ≠ 16; we pad/truncate via `Vector.ofFn` for totality.
+    Vector.ofFn (n := 16) fun i => arr[i.val]?.getD 0
 
 end SHA512 --#
 
@@ -156,7 +162,7 @@ For SHA-1, the initial hash value, $H^{(0)}$, shall consist of the following fiv
 
 namespace SHA1 --#
 
-def H0 : HashValue := #[
+def H0 : HashValue := #v[
   0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0
 ]
 
@@ -171,7 +177,7 @@ For SHA-224, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA256 --#
 
-def H0_224 : HashValue := #[
+def H0_224 : HashValue := #v[
   0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
   0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
 ]
@@ -187,7 +193,7 @@ For SHA-256, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA256 --#
 
-def H0_256 : HashValue := #[
+def H0_256 : HashValue := #v[
   0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
 ]
@@ -206,7 +212,7 @@ For SHA-384, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA512 --#
 
-def H0_384 : HashValue := #[
+def H0_384 : HashValue := #v[
   0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
   0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4
 ]
@@ -225,7 +231,7 @@ For SHA-512, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA512 --#
 
-def H0_512 : HashValue := #[
+def H0_512 : HashValue := #v[
   0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
   0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179
 ]
