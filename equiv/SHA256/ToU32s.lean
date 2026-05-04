@@ -118,6 +118,6 @@ theorem toU32sFromBytes_eq_toU32s (data : ByteArray) (off : Nat) :
   -- `Vector.ofFn` β-reductions plus an associativity normalization.
   simp only [Impl.toU32sFromBytes, Impl.toU32s, Impl.beU32FromBytes, Impl.beU32,
     Vector.getElem_ofFn, ← Nat.add_assoc]
-  interval_cases i <;> simp
+  decide
 
 end SHS.Equiv.SHA256.ToU32s

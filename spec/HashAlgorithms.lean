@@ -3,8 +3,9 @@ import spec.Preprocessing
 set_option autoImplicit true
 
 -- Bounds discharge for `Vector` accessors used inside the `for h : t in [a:b] do`
--- ranges below.  `Std.Legacy.Range` membership unfolds to `start ≤ t ∧ t < stop`,
--- which a small `have` chain hands to `grind`.
+-- ranges below.  Range membership (`Std.Legacy.Range`) carries `.lower` / `.upper`
+-- accessors that pin `start ≤ t < stop`; we extract them and let `grind` close
+-- the ensuing arithmetic goal (e.g. `t < 80`, `t - 16 < 80`).
 local macro_rules
   | `(tactic| get_elem_tactic) =>
     `(tactic|
@@ -237,7 +238,7 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   let mut g := H[6]
   let mut h := H[7]
   -- Step 3. For t = 0 to 63
-  for ht : t in [0:64] do
+  for h : t in [0:64] do
     let T1 := h + bigSigma1 e + Ch e f g + K[t] + W[t]
     let T2 := bigSigma0 a + Maj a b c
     h := g
@@ -348,11 +349,17 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   let mut g := H[6]
   let mut h := H[7]
   -- Step 3. For t = 0 to 79
-  for ht : t in [0:80] do
+  for h : t in [0:80] do
     let T1 := h + bigSigma1 e + Ch e f g + K[t] + W[t]
     let T2 := bigSigma0 a + Maj a b c
-    h := g; g := f; f := e; e := d + T1
-    d := c; c := b; b := a; a := T1 + T2
+    h := g
+    g := f
+    f := e
+    e := d + T1
+    d := c
+    c := b
+    b := a
+    a := T1 + T2
   -- Step 4. Compute the i-th intermediate hash value H^(i)
   return #v[
     a + H[0], b + H[1], c + H[2], d + H[3],

@@ -10,7 +10,7 @@ three layers:
   SHA-384, SHA-512, SHA-512/224, SHA-512/256).  All 1415 NIST CAVP
   vectors pass.  Rendered via [mdgen] + `pandoc`.
 * **`impl/`** — a performance-tuned executable SHA-256 implementation
-  (~177 MiB/s; ~2.3× slower than `sha256sum`).
+  (~170 MiB/s; ~2.4× slower than `sha256sum`).
 * **`equiv/`** — machine-checked equivalence proofs between the impl
   and the spec, with public theorems `compress_correct` and
   `sha256_correct` pinned to a small classical-axiom trust base.
@@ -33,7 +33,7 @@ make html          # docs/FIPS-180-4.html
 
 `bench/cavp.sh` times spec vs impl on the SHA-256 NIST CAVP run;
 `lake exe stress` measures impl throughput against `sha256sum` on
-multi-MB random files.  Steady-state impl throughput is ~177 MiB/s
+multi-MB random files.  Steady-state impl throughput is ~170 MiB/s
 from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.
 
 ## Coverage and trust base

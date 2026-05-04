@@ -22,7 +22,9 @@ namespace SHA512 --#
 def sha512_224 (M : Message) (_h : M.length < 2 ^ 128) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512_224
-  -- truncate H^(N) to its left-most 224 bits
+  -- 224 = 3·64 + 32 spans 3.5 of the 64-bit hash words, so we concatenate
+  -- the first four and trim to the left-most 224 bits.  (SHA-512/256 below
+  -- needs no `.leftmost` because 256 = 4·64 lands on a word boundary.)
   (H[0] ++ H[1] ++ H[2] ++ H[3]).leftmost 224
 
 end SHA512 --#

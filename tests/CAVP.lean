@@ -2,8 +2,6 @@ import tests.Parser
 import spec
 import impl.SHA256
 
-set_option autoImplicit true
-
 open RspParser SHS
 
 namespace tests.CAVP
@@ -13,7 +11,7 @@ namespace tests.CAVP
 private def hexChars : List Char := "0123456789abcdef".toList
 
 /-- Lowercase hex of a `Digest n` (n / 4 hex digits, MSB first). -/
-def toHex (d : Digest n) : String :=
+def toHex {n : Nat} (d : Digest n) : String :=
   String.ofList ((List.range (n / 4)).reverse.map fun i =>
     hexChars[((d.toNat / (16 ^ i)) % 16)]!)
 

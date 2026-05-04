@@ -50,11 +50,13 @@ the bound is automatic. -/
 
 /-! ## Initial-state bridge -/
 
-/-- The impl's initial hash value `H256_256` lifts to the spec's `H0_256`. -/
+/-- The impl's initial hash value `H256_256` lifts to the spec's `H0_256`.
+    Eight literal `UInt32` / `BitVec 32` constants, pointwise; we enumerate
+    the indices rather than calling `native_decide` (which would inflate the
+    trust base with `Lean.ofReduceBool`/`trustCompiler`). -/
 @[simp] theorem toSpecState_H256_256 :
     toSpecState Impl.H256_256 = SHS.SHA256.H0_256 := by
-  apply Vector.ext
-  intro i hi
+  apply Vector.ext; intro i hi
   unfold toSpecState Impl.H256_256 SHS.SHA256.H0_256
   rw [Vector.getElem_map]
   match i, hi with

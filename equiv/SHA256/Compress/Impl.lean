@@ -275,7 +275,6 @@ The schedule half of the per-round equivalence; consumed by the
 `vars_match` and `ring_match` sub-cases of `MatchAfter_step`. -/
 theorem implScheduleStep_value_match
     (block₀ impl_block : Impl.Block) (W : Schedule) (n : Nat) (hn : n < 64)
-    (hWsize : W.size = 64)
     (huntouched : ∀ k : Fin 16, n ≤ k.val → impl_block[k] = block₀[k])
     (hring : ∀ k < n, n ≤ k + 16 →
       (impl_block[k % 16]'(by

@@ -34,6 +34,24 @@ private def parseBytes (bs : ByteArray) : Array Block :=
     toSpecBlock (Impl.toU32s (Vector.ofFn fun j : Fin 64 =>
       bs.get! (i.val * 64 + j.val)))
 
+/-- Four bytes at offset `i * 64 + 4 * j` of a `ByteArray` of size `≥ i * 64 + 4 * j + 4`
+    are recovered by `take 4 ∘ drop (4*j) ∘ take 64 ∘ drop (i*64)`.  Isolated from the
+    main `parseBytes_eq_parse` proof so the indexing arithmetic does not clutter it. -/
+private theorem fourBytes_take_drop (bs : ByteArray) (i j : Nat)
+    (hSize : i * 64 + 4 * j + 4 ≤ bs.size) (hj : j < 16) :
+    List.take 4 (List.drop (4 * j) (List.take 64 (List.drop (i * 64) bs.data.toList))) =
+    [bs.data.toList[i * 64 + 4 * j]'(by rw [Array.length_toList]; grind),
+     bs.data.toList[i * 64 + 4 * j + 1]'(by rw [Array.length_toList]; grind),
+     bs.data.toList[i * 64 + 4 * j + 2]'(by rw [Array.length_toList]; grind),
+     bs.data.toList[i * 64 + 4 * j + 3]'(by rw [Array.length_toList]; grind)] := by
+  rw [List.drop_take, List.take_take, Nat.min_eq_left (by grind : 4 ≤ 64 - 4 * j),
+      List.drop_drop]
+  apply List.ext_getElem
+  · simp [List.length_take, List.length_drop, Array.length_toList]; grind
+  · intro k _ hk2
+    simp only [List.length_cons, List.length_nil] at hk2
+    interval_cases k <;> simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
+
 private theorem implPaddedBlocks_eq_parseBytes (data : ByteArray) :
     (implPaddedBlocks data).map (fun b => toSpecBlock (Impl.toU32s b)) =
       parseBytes (implPaddedBytes data) := by
@@ -57,8 +75,8 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
     rw [show (fun (_ : UInt8) => 8) = Function.const UInt8 8 from rfl,
       List.map_const, List.sum_replicate_nat]
     rw [Array.length_toList, hData]
-    omega
-  rw [toChunks_eq_drop_take 512 (by omega) _ (bs.size / 64) hLen]
+    grind
+  rw [toChunks_eq_drop_take 512 (by grind) _ (bs.size / 64) hLen]
   apply Array.ext
   · simp [Array.size_ofFn, List.toArray, List.length_map,
       List.length_range]
@@ -67,14 +85,14 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
       List.getElem_map, List.getElem_range]
     show toSpecBlock _ = _
     unfold bytesToBitMessage
-    rw [show i * 512 = 8 * (i * 64) from by omega,
+    rw [show i * 512 = 8 * (i * 64) from by grind,
         show (512 : Nat) = 8 * 64 from rfl,
         flatMap_byteToBits_drop_8, flatMap_byteToBits_take_8]
     have hSize64 : i < bs.size / 64 := by
       simp [Array.size_ofFn] at hi1; exact hi1
     have hTakeLen : ((bs.data.toList.drop (i * 64)).take 64).length = 64 := by
       simp [List.length_take, List.length_drop, hData]
-      omega
+      grind
     have hFlatLen : (((bs.data.toList.drop (i * 64)).take 64).flatMap byteToBits).length =
         32 * 16 := by
       rw [List.length_flatMap]
@@ -82,7 +100,7 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
         funext fun _ => byteToBits_length _]
       rw [show (fun (_ : UInt8) => 8) = Function.const UInt8 8 from rfl,
         List.map_const, List.sum_replicate_nat, hTakeLen]
-    rw [toChunks_eq_drop_take 32 (by omega) _ 16 hFlatLen]
+    rw [toChunks_eq_drop_take 32 (by grind) _ 16 hFlatLen]
     apply Vector.ext
     intro j hjLt
     have hLHS := toSpecBlock_toU32s_index
@@ -124,34 +142,12 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
         flatMap_byteToBits_drop_8, flatMap_byteToBits_take_8]
     unfold fourBytesBits
     have hSizeBs : i * 64 + 4 * j + 4 ≤ bs.size := by
-      have hMod' : bs.size = 64 * (bs.size / 64) := by grind
-      have h1 : i + 1 ≤ bs.size / 64 := hSize64
-      have h2 : 64 * (i + 1) ≤ 64 * (bs.size / 64) := Nat.mul_le_mul_left 64 h1
+      have : 64 * (i + 1) ≤ 64 * (bs.size / 64) := Nat.mul_le_mul_left 64 hSize64
+      have : bs.size = 64 * (bs.size / 64) := by grind
       grind
-    have hRhsList :
-        List.take 4 (List.drop (4 * j)
-          (List.take 64 (List.drop (i * 64) bs.data.toList))) =
-        [bs.data.toList[i * 64 + 4 * j]'(by rw [Array.length_toList, hData]; grind),
-         bs.data.toList[i * 64 + 4 * j + 1]'(by rw [Array.length_toList, hData]; grind),
-         bs.data.toList[i * 64 + 4 * j + 2]'(by rw [Array.length_toList, hData]; grind),
-         bs.data.toList[i * 64 + 4 * j + 3]'(by rw [Array.length_toList, hData]; grind)] := by
-      rw [List.drop_take, List.take_take]
-      rw [Nat.min_eq_left (by grind : 4 ≤ 64 - 4 * j)]
-      rw [List.drop_drop]
-      apply List.ext_getElem
-      · simp [List.length_take, List.length_drop, Array.length_toList, hData]
-        grind
-      · intro k hk1 hk2
-        simp only [List.length_cons, List.length_nil] at hk2
-        interval_cases k <;>
-          simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
-    rw [hRhsList]
+    rw [fourBytes_take_drop bs i j hSizeBs hjLt]
     simp only [List.flatMap_cons, List.flatMap_nil, List.append_nil]
     simp only [Vector.getElem_ofFn]
-    have h0 : i * 64 + (4 * j + 0) < bs.size := by grind
-    have h1 : i * 64 + (4 * j + 1) < bs.size := by grind
-    have h2 : i * 64 + (4 * j + 2) < bs.size := by grind
-    have h3 : i * 64 + (4 * j + 3) < bs.size := by grind
     rw [get!_eq_toList_getElem bs (i * 64 + 4 * j) (by grind),
         show i * 64 + (4 * j + 1) = i * 64 + 4 * j + 1 from by grind,
         get!_eq_toList_getElem bs (i * 64 + 4 * j + 1) (by grind),

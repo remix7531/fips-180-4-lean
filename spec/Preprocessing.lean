@@ -109,11 +109,11 @@ namespace SHA256 --#
 
 def parse (M : Message) : Array Block :=
   -- Split into 512-bit blocks, then split each block into sixteen 32-bit words.
+  -- A spec-conforming input padded by §5.1.1 yields exactly 16 words per block;
+  -- the `getD 0` total fallback only fires on malformed (mis-padded) input.
   M.toChunks 512 |>.toArray |>.map fun b =>
-    let arr := b.toChunks 32 |>.map Word.fromBits |>.toArray
-    -- Lift to a 16-word `Vector`.  Out-of-spec inputs (block size ≠ 512) yield
-    -- an `Array` of size ≠ 16; we pad/truncate via `Vector.ofFn` for totality.
-    Vector.ofFn (n := 16) fun i => arr[i.val]?.getD 0
+    let words := b.toChunks 32 |>.map Word.fromBits |>.toArray
+    Vector.ofFn (n := 16) fun i => words[i]?.getD 0
 
 end SHA256 --#
 
@@ -139,11 +139,11 @@ namespace SHA512 --#
 
 def parse (M : Message) : Array Block :=
   -- Split into 1024-bit blocks, then split each block into sixteen 64-bit words.
+  -- A spec-conforming input padded by §5.1.2 yields exactly 16 words per block;
+  -- the `getD 0` total fallback only fires on malformed (mis-padded) input.
   M.toChunks 1024 |>.toArray |>.map fun b =>
-    let arr := b.toChunks 64 |>.map Word.fromBits |>.toArray
-    -- Lift to a 16-word `Vector`.  Out-of-spec inputs (block size ≠ 1024) yield
-    -- an `Array` of size ≠ 16; we pad/truncate via `Vector.ofFn` for totality.
-    Vector.ofFn (n := 16) fun i => arr[i.val]?.getD 0
+    let words := b.toChunks 64 |>.map Word.fromBits |>.toArray
+    Vector.ofFn (n := 16) fun i => words[i]?.getD 0
 
 end SHA512 --#
 

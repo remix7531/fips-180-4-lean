@@ -105,7 +105,7 @@ theorem MatchAfter_step
   case sched_size =>
     unfold specScheduleStep; split <;> simp [hWsize]
   case vars_match =>
-    have hw := implScheduleStep_value_match block₀ impl_block W n hn hWsize huntouched hring
+    have hw := implScheduleStep_value_match block₀ impl_block W n hn huntouched hring
     -- The 8 working-var hypotheses (and `hK`) are bound at literal `Nat`
     -- indices because `interval_cases k_val` produces goals indexed by
     -- numeric literals, not `Fin` constructors.
@@ -169,7 +169,7 @@ theorem MatchAfter_step
     · -- k = n: the freshly written schedule entry.
       cases hk_eq
       have hself := implScheduleStep_fst_at_self ⟨n, hn⟩ impl_block
-      have hval := implScheduleStep_value_match block₀ impl_block W n hn hWsize
+      have hval := implScheduleStep_value_match block₀ impl_block W n hn
                      huntouched hring
       rw [hself]
       exact hval
@@ -239,14 +239,8 @@ theorem toSpecState_implCompressFoldl
   unfold implCompressFoldl specCompressFused addH toSpecState
   rw [Vector.getElem_map, Vector.getElem_zipWith, toBitVec_add]
   rw [hvars' k hk]
-  match k, hk with
-  | 0, _ => simp; ac_rfl
-  | 1, _ => simp; ac_rfl
-  | 2, _ => simp; ac_rfl
-  | 3, _ => simp; ac_rfl
-  | 4, _ => simp; ac_rfl
-  | 5, _ => simp; ac_rfl
-  | 6, _ => simp; ac_rfl
-  | 7, _ => simp; ac_rfl
+  -- Eight working-variable indices; each side reduces to the same
+  -- `state[k] + ⟨fold result⟩[k]` after `simp`, modulo `+`-associativity.
+  interval_cases k <;> (simp; ac_rfl)
 
 end SHS.Equiv.SHA256.Compress.Match
