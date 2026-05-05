@@ -19,12 +19,19 @@ set_option autoImplicit true
 -- Type aliases for the names introduced above. `Word`, `HashValue`, `Block`, and
 -- `Schedule` are also re-introduced as `scoped notation` inside each algorithm
 -- namespace where the word size `w` is fixed.
+/-- A single bit, modelled as `Bool`. -/
 abbrev Bit := Bool
+/-- A message: a list of bits, MSB-first. -/
 abbrev Message := List Bit
+/-- An `w`-bit unsigned word. -/
 abbrev Word (w : Nat) := BitVec w
+/-- The hash state: an array of `w`-bit words (length depends on the algorithm). -/
 abbrev HashValue (w : Nat) := Array (Word w)
+/-- A message block: an array of `w`-bit words processed by one compression call. -/
 abbrev Block (w : Nat) := Array (Word w)
+/-- A round-key/message schedule: an array of `w`-bit words. -/
 abbrev Schedule (w : Nat) := Array (Word w)
+/-- A digest: an `n`-bit truncation of the final hash state. -/
 abbrev Digest (n : Nat) := BitVec n
 
 -- Operator aliases matching the FIPS notation.  The precedence numbers are
@@ -32,14 +39,20 @@ abbrev Digest (n : Nat) := BitVec n
 -- ¬ binds tightest); type-directed elaboration then picks the BitVec
 -- interpretation.  ⊕ is right-associative to match the standard convention
 -- for chained XORs in the round functions; ∨ stays left-associative.
+/-- FIPS-180-4 bitwise XOR (right-associative). -/
 scoped infixr:30 " ⊕ " => HXor.hXor
+/-- FIPS-180-4 bitwise AND. -/
 scoped infixl:35 " ∧ " => HAnd.hAnd
+/-- FIPS-180-4 bitwise OR. -/
 scoped infixl:30 " ∨ " => HOr.hOr
+/-- FIPS-180-4 bitwise NOT (one's complement). -/
 scoped notation:max "¬" a:40 => Complement.complement a
+/-- FIPS-180-4 left shift. -/
 scoped infixl:75 " << " => HShiftLeft.hShiftLeft
+/-- FIPS-180-4 right shift. -/
 scoped infixl:75 " >> " => HShiftRight.hShiftRight
 
--- `min { k < n | p k }` is the smallest k in [0, n) satisfying p, or 0 if none.
+/-- `min { k < n | p k }` — the smallest `k` in `[0, n)` satisfying `p`, or `0` if none. -/
 syntax "min " "{" ident " < " term " | " term "}" : term
 macro_rules
   | `(min { $k:ident < $n:term | $p:term }) =>

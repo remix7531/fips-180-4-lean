@@ -97,6 +97,7 @@ SHA-512, SHA-512/224 and SHA-512/256 operate on 64-bit words ($w=64$).
    integer with $0 \leq n < w$, is defined by
 -/
 
+/-- FIPS-180-4 §2.2.2 (3): right shift `SHR n x` of the `w`-bit word `x` by `n` positions. -/ --#
 def SHR (n : Nat) (x : Word w) : Word w := x >> n
 
 /-!
@@ -107,6 +108,7 @@ def SHR (n : Nat) (x : Word w) : Word w := x >> n
    *w*-bit word and $n$ is an integer with $0 \leq n < w$, is defined by
 -/
 
+/-- FIPS-180-4 §2.2.2 (4): rotate-right `ROTR n x` of the `w`-bit word `x` by `n` positions. -/ --#
 def ROTR (n : Nat) (x : Word w) : Word w := (x >> n) ∨ (x << (w - n))
 
 /-!
@@ -120,6 +122,7 @@ def ROTR (n : Nat) (x : Word w) : Word w := (x >> n) ∨ (x << (w - n))
    *w*-bit word and $n$ is an integer with $0 \leq n < w$, is defined by
 -/
 
+/-- FIPS-180-4 §2.2.2 (5): rotate-left `ROTL n x` of the `w`-bit word `x` by `n` positions. -/ --#
 def ROTL (n : Nat) (x : Word w) : Word w := (x << n) ∨ (x >> (w - n))
 
 /-!

@@ -13,7 +13,7 @@ The spec is too slow to validate on inputs above ~1 MiB in reasonable
 time, so it's skipped above `specMaxBytes`.
 
 Test files are not committed to the repo (they're large and not
-deterministic); regenerate via `bench/gen-stress.sh` (also wired up as
+deterministic); regenerate via `tests/bench/gen-stress.sh` (also wired up as
 `make stress-gen`).  Missing files produce a skip with a hint, not a
 failure — so this exe stays useful even when the data isn't present.
 
@@ -29,7 +29,7 @@ namespace tests.Stress
 
 /-! ## Default test files -/
 
-/-- The default test files; create with `bench/gen-stress.sh`. -/
+/-- The default test files; create with `tests/bench/gen-stress.sh`. -/
 def defaultFiles : List String :=
   ["tests/stress/1MiB.bin",
    "tests/stress/8MiB.bin",

@@ -115,7 +115,7 @@ theorem bytesToBitMessage_implPaddedBytes
   have hTB : (fun i => (data.size.toUInt64 <<< 3).toNat.testBit i) =
              ((8 * data.size).testBit) := by
     funext i; exact testBit_totalBits data h i
-  unfold implPaddedBytes SHS.SHA1.pad
+  unfold implPaddedBytes SHS.SHA1.pad SHS.SHA256.pad
   simp only [bytesToBitMessage_append, bytesToBitMessage_appendZeros,
     bytesToBitMessage_push_0x80, bytesToBitMessage_lengthBE64, hLen, hTB]
   set z := zerosCount data with hz_eq

@@ -29,13 +29,18 @@ produces a 32-bit word as output. The function $f_t(x, y, z)$ is defined as foll
 
 namespace SHA1 --#
 
+/-- A SHA-1 word: 32 bits. -/ --#
 scoped notation "Word" => BitVec 32 --#
+/-- A SHA-1 message block: 16 words (512 bits). -/ --#
 scoped notation "Block" => Vector (BitVec 32) 16 --#
+/-- A SHA-1 hash value: 5 words (160 bits). -/ --#
 scoped notation "HashValue" => Vector (BitVec 32) 5 --#
+/-- A SHA-1 message schedule: 80 words. -/ --#
 scoped notation "Schedule" => Vector (BitVec 32) 80 --#
 
 /-! <!-- eqn:4.1 --> -/
 
+/-- FIPS-180-4 §4.1.1: SHA-1 logical function `f_t(x, y, z)`. -/ --#
 def f (t : Nat) (x y z : Word) : Word :=
   if t ≤ 19 then /- Ch(x, y, z) -/ (x ∧ y) ⊕ (¬x ∧ z)
   else if t ≤ 39 then /- Parity(x, y, z) -/ x ⊕ y ⊕ z
@@ -54,33 +59,43 @@ is a new 32-bit word.
 
 namespace SHA256 --#
 
+/-- A SHA-256 word: 32 bits. -/ --#
 scoped notation "Word" => BitVec 32 --#
+/-- A SHA-256 message block: 16 words (512 bits). -/ --#
 scoped notation "Block" => Vector (BitVec 32) 16 --#
+/-- A SHA-256 hash value: 8 words (256 bits). -/ --#
 scoped notation "HashValue" => Vector (BitVec 32) 8 --#
+/-- A SHA-256 message schedule: 64 words. -/ --#
 scoped notation "Schedule" => Vector (BitVec 32) 64 --#
 
 /-! <!-- eqn:4.2 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.2): `Ch(x, y, z) = (x ∧ y) ⊕ (¬x ∧ z)`. -/ --#
 def Ch (x y z : Word) : Word := (x ∧ y) ⊕ (¬x ∧ z)
 
 /-! <!-- eqn:4.3 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.3): `Maj(x, y, z) = (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z)`. -/ --#
 def Maj (x y z : Word) : Word := (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z)
 
 /-! <!-- eqn:4.4 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.4): `Σ₀⁽²⁵⁶⁾(x) = ROTR² x ⊕ ROTR¹³ x ⊕ ROTR²² x`. -/ --#
 def bigSigma0 (x : Word) : Word := ROTR 2 x ⊕ ROTR 13 x ⊕ ROTR 22 x
 
 /-! <!-- eqn:4.5 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.5): `Σ₁⁽²⁵⁶⁾(x) = ROTR⁶ x ⊕ ROTR¹¹ x ⊕ ROTR²⁵ x`. -/ --#
 def bigSigma1 (x : Word) : Word := ROTR 6 x ⊕ ROTR 11 x ⊕ ROTR 25 x
 
 /-! <!-- eqn:4.6 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.6): `σ₀⁽²⁵⁶⁾(x) = ROTR⁷ x ⊕ ROTR¹⁸ x ⊕ SHR³ x`. -/ --#
 def smallSigma0 (x : Word) : Word := ROTR 7 x ⊕ ROTR 18 x ⊕ SHR 3 x
 
 /-! <!-- eqn:4.7 --> -/
 
+/-- FIPS-180-4 §4.1.2 (4.7): `σ₁⁽²⁵⁶⁾(x) = ROTR¹⁷ x ⊕ ROTR¹⁹ x ⊕ SHR¹⁰ x`. -/ --#
 def smallSigma1 (x : Word) : Word := ROTR 17 x ⊕ ROTR 19 x ⊕ SHR 10 x
 
 end SHA256 --#
@@ -95,33 +110,43 @@ result of each function is a new 64-bit word.
 
 namespace SHA512 --#
 
+/-- A SHA-512 word: 64 bits. -/ --#
 scoped notation "Word" => BitVec 64 --#
+/-- A SHA-512 message block: 16 words (1024 bits). -/ --#
 scoped notation "Block" => Vector (BitVec 64) 16 --#
+/-- A SHA-512 hash value: 8 words (512 bits). -/ --#
 scoped notation "HashValue" => Vector (BitVec 64) 8 --#
+/-- A SHA-512 message schedule: 80 words. -/ --#
 scoped notation "Schedule" => Vector (BitVec 64) 80 --#
 
 /-! <!-- eqn:4.8 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.8): `Ch(x, y, z) = (x ∧ y) ⊕ (¬x ∧ z)` (64-bit). -/ --#
 def Ch (x y z : Word) : Word := (x ∧ y) ⊕ (¬x ∧ z)
 
 /-! <!-- eqn:4.9 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.9): `Maj(x, y, z) = (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z)` (64-bit). -/ --#
 def Maj (x y z : Word) : Word := (x ∧ y) ⊕ (x ∧ z) ⊕ (y ∧ z)
 
 /-! <!-- eqn:4.10 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.10): `Σ₀⁽⁵¹²⁾(x) = ROTR²⁸ x ⊕ ROTR³⁴ x ⊕ ROTR³⁹ x`. -/ --#
 def bigSigma0 (x : Word) : Word := ROTR 28 x ⊕ ROTR 34 x ⊕ ROTR 39 x
 
 /-! <!-- eqn:4.11 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.11): `Σ₁⁽⁵¹²⁾(x) = ROTR¹⁴ x ⊕ ROTR¹⁸ x ⊕ ROTR⁴¹ x`. -/ --#
 def bigSigma1 (x : Word) : Word := ROTR 14 x ⊕ ROTR 18 x ⊕ ROTR 41 x
 
 /-! <!-- eqn:4.12 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.12): `σ₀⁽⁵¹²⁾(x) = ROTR¹ x ⊕ ROTR⁸ x ⊕ SHR⁷ x`. -/ --#
 def smallSigma0 (x : Word) : Word := ROTR 1 x ⊕ ROTR 8 x ⊕ SHR 7 x
 
 /-! <!-- eqn:4.13 --> -/
 
+/-- FIPS-180-4 §4.1.3 (4.13): `σ₁⁽⁵¹²⁾(x) = ROTR¹⁹ x ⊕ ROTR⁶¹ x ⊕ SHR⁶ x`. -/ --#
 def smallSigma1 (x : Word) : Word := ROTR 19 x ⊕ ROTR 61 x ⊕ SHR 6 x
 
 end SHA512 --#
@@ -139,6 +164,7 @@ namespace SHA1 --#
 
 /-! <!-- eqn:4.14 --> -/
 
+/-- FIPS-180-4 §4.2.1 (4.14): SHA-1 round constants `K_t`. -/ --#
 def K (t : Nat) : Word :=
   if t ≤ 19 then 0x5a827999
   else if t ≤ 39 then 0x6ed9eba1
@@ -158,6 +184,7 @@ prime numbers. In hex, these constant words are (from left to right)
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §4.2.2: SHA-224/SHA-256 round constants `K⁽²⁵⁶⁾_t`. -/ --#
 def K : Schedule := #v[
   0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
   0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
@@ -182,6 +209,7 @@ first eighty prime numbers. In hex, these constant words are (from left to right
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §4.2.3: SHA-384/SHA-512/SHA-512/t round constants `K⁽⁵¹²⁾_t`. -/ --#
 def K : Schedule := #v[
   0x428a2f98d728ae22, 0x7137449123ef65cd, 0xb5c0fbcfec4d3b2f, 0xe9b5dba58189dbbc,
   0x3956c25bf348b538, 0x59f111f1b605d019, 0x923f82a4af194f9b, 0xab1c5ed5da6d8118,

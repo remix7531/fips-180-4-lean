@@ -289,10 +289,12 @@ theorem paddedBlock_finalB_ge56 (data : ByteArray) (h : ¬ data.size % 64 < 56) 
   have hge_data : ¬ (data.size / 64 + 1) * 64 + j.val < data.size := by omega
   have hne_sep : ¬ (data.size / 64 + 1) * 64 + j.val = data.size := by omega
   by_cases hj56 : j.val < 56
-  · have hzero : (data.size / 64 + 1) * 64 + j.val < data.size + 1 + (64 + 55 - data.size % 64) := by
+  · have hzero : (data.size / 64 + 1) * 64 + j.val
+        < data.size + 1 + (64 + 55 - data.size % 64) := by
       omega
     simp [hj56, hge_data, hne_sep, hzero]
-  · have hge_zero : ¬ (data.size / 64 + 1) * 64 + j.val < data.size + 1 + (64 + 55 - data.size % 64) := by
+  · have hge_zero : ¬ (data.size / 64 + 1) * 64 + j.val
+        < data.size + 1 + (64 + 55 - data.size % 64) := by
       omega
     have hidx : (data.size / 64 + 1) * 64 + j.val
           - (data.size + 1 + (64 + 55 - data.size % 64))

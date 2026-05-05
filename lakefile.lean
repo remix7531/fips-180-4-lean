@@ -13,6 +13,7 @@ package «fips-pub-180-4» where
     ⟨`weak.linter.style.missingEnd, true⟩,
     ⟨`weak.linter.style.setOption, true⟩
   ]
+  lintDriver := "batteries/runLinter"
 
 require mdgen from git
   "https://github.com/Seasawher/mdgen" @ "v4.28.0-rc1"

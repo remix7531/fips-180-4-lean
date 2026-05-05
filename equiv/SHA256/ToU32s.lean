@@ -73,7 +73,7 @@ theorem beU32_eq_fromBits (bytes : Vector UInt8 64) (i : Fin 16) :
   generalize bytes[4 * i.val + 2]'(by omega) = b2
   generalize bytes[4 * i.val + 3]'(by omega) = b3
   simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.append_assoc, List.map_cons, List.map_nil,
+    List.nil_append, List.cons_append, List.map_cons, List.map_nil,
     List.foldl, UInt8.toNat_testBit_eq_getLsbD]
   apply BitVec.eq_of_getLsbD_eq
   intro k hk

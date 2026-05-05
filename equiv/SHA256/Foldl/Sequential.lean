@@ -169,7 +169,8 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
   show Id.run (do
         let r ← forIn' [0:64]
           (⟨H[0]'(by decide), H[1]'(by decide), H[2]'(by decide), H[3]'(by decide),
-             H[4]'(by decide), H[5]'(by decide), H[6]'(by decide), H[7]'(by decide)⟩ : SpecVarsTuple)
+             H[4]'(by decide), H[5]'(by decide),
+             H[6]'(by decide), H[7]'(by decide)⟩ : SpecVarsTuple)
           (fun t (h : t ∈ [0:64]) r =>
             let a := r.fst; let x := r.snd; let b := x.fst; let x := x.snd
             let c := x.fst; let x := x.snd; let d := x.fst; let x := x.snd
@@ -187,7 +188,8 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
   -- Now bridge forIn' → forIn.
   show (Id.run (forIn' [0:64]
           (⟨H[0]'(by decide), H[1]'(by decide), H[2]'(by decide), H[3]'(by decide),
-             H[4]'(by decide), H[5]'(by decide), H[6]'(by decide), H[7]'(by decide)⟩ : SpecVarsTuple)
+             H[4]'(by decide), H[5]'(by decide),
+             H[6]'(by decide), H[7]'(by decide)⟩ : SpecVarsTuple)
           bodyTup)
         |> fun r => match r with
           | ⟨a, b, c, d, e, f, g, h⟩ =>

@@ -31,7 +31,7 @@ make html          # docs/FIPS-180-4.html
 
 ## Benchmark
 
-`bench/cavp.sh` times spec vs impl on the SHA-256 NIST CAVP run;
+`tests/bench/cavp.sh` times spec vs impl on the SHA-256 NIST CAVP run;
 `lake exe stress` measures impl throughput against `sha256sum` on
 multi-MB random files.  Steady-state impl throughput is ~170 MiB/s
 from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.

@@ -10,14 +10,13 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = import nixpkgs { inherit system; };
-        lean-lsp-mcp = pkgs.callPackage ./.nix/lean-lsp-mcp.nix { };
       in {
         devShells.default = pkgs.mkShell {
           buildInputs = [
+            pkgs.elan          # Lean 4 toolchain manager
             pkgs.gnumake
-            pkgs.elan     # Lean 4 toolchain manager
-            pkgs.pandoc   # HTML rendering
-            lean-lsp-mcp  # Lean LSP MCP server for agentic proof development
+            pkgs.lean-lsp-mcp  # Lean LSP MCP server for agentic proof development
+            pkgs.pandoc        # HTML rendering
           ];
         };
       }

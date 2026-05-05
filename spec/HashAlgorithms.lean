@@ -63,6 +63,7 @@ the following steps:
 
 namespace SHA1 --#
 
+/-- FIPS-180-4 §6.1.2 step 1: SHA-1 message schedule (16-word block → 80 words). -/ --#
 def schedule (M : Block) : Schedule := Id.run do
   let mut W : Schedule := Vector.replicate 80 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
@@ -75,6 +76,7 @@ def schedule (M : Block) : Schedule := Id.run do
 
 /-!  -/
 
+/-- FIPS-180-4 §6.1.2 steps 2-4: SHA-1 block compression updating the 5-word state. -/ --#
 def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
@@ -102,6 +104,8 @@ $M^{(N)}$), the resulting 160-bit message digest of the message, $M$, is
 $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 -/
 
+/-- FIPS-180-4 §6.1: SHA-1 hash of a message `M` (length < 2⁶⁴ bits) → 160-bit digest. -/ --#
+@[nolint unusedArguments]
 def sha1 (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0
@@ -133,6 +137,7 @@ described in Sec. 6.1.1 has been performed, the processing of $M^{(i)}$ is as fo
 
 namespace SHA1 --#
 
+/-- FIPS-180-4 §6.1.3: SHA-1 alternate compression using a 16-word circular schedule. -/ --#
 def compress_alt (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. For t = 0 to 15: W_t = M_t^(i).  Note: the SHA-1 alternate method's
   -- circular schedule has only 16 words; we therefore use `Block` (size 16) here
@@ -165,6 +170,8 @@ $M^{(N)}$), the resulting 160-bit message digest of the message, $M$, is
 $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 -/
 
+/-- FIPS-180-4 §6.1.3: SHA-1 hash via the alternate (circular schedule) method. -/ --#
+@[nolint unusedArguments]
 def sha1_alt (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress_alt H0
@@ -213,6 +220,7 @@ using the following steps:
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §6.2.2 step 1: SHA-256 message schedule (16-word block → 64 words). -/ --#
 def schedule (M : Block) : Schedule := Id.run do
   let mut W : Schedule := Vector.replicate 64 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
@@ -225,6 +233,7 @@ def schedule (M : Block) : Schedule := Id.run do
 
 /-!  -/
 
+/-- FIPS-180-4 §6.2.2 steps 2-4: SHA-256 block compression updating the 8-word state. -/ --#
 def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
@@ -263,6 +272,8 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \|
   H_4^{(N)} \| H_5^{(N)} \| H_6^{(N)} \| H_7^{(N)}$$
 -/
 
+/-- FIPS-180-4 §6.2: SHA-256 hash of a message `M` (length < 2⁶⁴ bits) → 256-bit digest. -/ --#
+@[nolint unusedArguments]
 def sha256 (M : Message) (_h : M.length < 2 ^ 64) : Digest 256 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_256
@@ -286,6 +297,8 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)} \| 
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §6.3: SHA-224 hash — SHA-256 with `H0_224` IV, truncated to 224 bits. -/ --#
+@[nolint unusedArguments]
 def sha224 (M : Message) (_h : M.length < 2 ^ 64) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_224
@@ -324,6 +337,7 @@ using the following steps:
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §6.4.2 step 1: SHA-512 message schedule (16-word block → 80 words). -/ --#
 def schedule (M : Block) : Schedule := Id.run do
   let mut W : Schedule := Vector.replicate 80 default
   -- For 0 ≤ t ≤ 15:  W_t = M_t^(i)
@@ -336,6 +350,7 @@ def schedule (M : Block) : Schedule := Id.run do
 
 /-!  -/
 
+/-- FIPS-180-4 §6.4.2 steps 2-4: SHA-512 block compression updating the 8-word state. -/ --#
 def compress (H : HashValue) (M : Block) : HashValue := Id.run do
   -- Step 1. Prepare the message schedule {W_t}
   let W := schedule M
@@ -374,6 +389,8 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)} \|
   H_6^{(N)} \| H_7^{(N)}$$
 -/
 
+/-- FIPS-180-4 §6.4: SHA-512 hash of a message `M` (length < 2¹²⁸ bits) → 512-bit digest. -/ --#
+@[nolint unusedArguments]
 def sha512 (M : Message) (_h : M.length < 2 ^ 128) : Digest 512 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512
@@ -397,6 +414,8 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)}$$
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §6.5: SHA-384 hash — SHA-512 with `H0_384` IV, truncated to 384 bits. -/ --#
+@[nolint unusedArguments]
 def sha384 (M : Message) (_h : M.length < 2 ^ 128) : Digest 384 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_384

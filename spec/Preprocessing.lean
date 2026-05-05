@@ -39,8 +39,9 @@ message length, to become the 512-bit padded message
 The length of the padded message should now be a multiple of 512 bits.
 -/
 
-namespace SHA1 --#
+namespace SHA256 --#
 
+/-- FIPS-180-4 §5.1.1: SHA-1, SHA-224, SHA-256 padding to a 512-bit-multiple length. -/ --#
 def pad (M : Message) : Message :=
   -- Length of the message M is ℓ bits.
   let ℓ := M.length
@@ -49,12 +50,13 @@ def pad (M : Message) : Message :=
   -- Append "1", k zero bits, and the 64-bit binary representation of ℓ.
   M ++ [true] ++ List.replicate k false ++ (List.range 64).reverse.map ℓ.testBit
 
-end SHA1 --#
+end SHA256 --#
 
 --#--
-namespace SHA256
-def pad : Message → Message := SHA1.pad
-end SHA256
+namespace SHA1
+/-- FIPS-180-4 §5.1.1: SHA-1 padding (identical to SHA-256's). -/ --#
+def pad : Message → Message := SHA256.pad
+end SHA1
 --#--
 
 /-
@@ -82,6 +84,7 @@ The length of the padded message should now be a multiple of 1024 bits.
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §5.1.2: SHA-384, SHA-512, SHA-512/t padding to a 1024-bit-multiple length. -/ --#
 def pad (M : Message) : Message :=
   -- Length of the message M is ℓ bits.
   let ℓ := M.length
@@ -107,6 +110,7 @@ denoted $M_0^{(i)}$, the next 32 bits are $M_1^{(i)}$, and so on up to $M_{15}^{
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §5.2.1: parse a padded SHA-1/SHA-224/SHA-256 message into 16-word blocks. -/ --#
 def parse (M : Message) : Array Block :=
   -- Split into 512-bit blocks, then split each block into sixteen 32-bit words.
   -- A spec-conforming input padded by §5.1.1 yields exactly 16 words per block;
@@ -120,6 +124,7 @@ end SHA256 --#
 --#--
 namespace SHA1
 
+/-- FIPS-180-4 §5.2.1: SHA-1 message parsing (identical to SHA-256's). -/ --#
 def parse : Message → Array Block := SHA256.parse
 
 end SHA1
@@ -137,6 +142,7 @@ up to $M_{15}^{(i)}$.
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §5.2.2: parse a padded SHA-384/SHA-512/SHA-512/t message into 16-word blocks. -/ --#
 def parse (M : Message) : Array Block :=
   -- Split into 1024-bit blocks, then split each block into sixteen 64-bit words.
   -- A spec-conforming input padded by §5.1.2 yields exactly 16 words per block;
@@ -162,6 +168,7 @@ For SHA-1, the initial hash value, $H^{(0)}$, shall consist of the following fiv
 
 namespace SHA1 --#
 
+/-- FIPS-180-4 §5.3.1: SHA-1 initial hash value `H⁽⁰⁾`. -/ --#
 def H0 : HashValue := #v[
   0x67452301, 0xefcdab89, 0x98badcfe, 0x10325476, 0xc3d2e1f0
 ]
@@ -177,6 +184,7 @@ For SHA-224, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §5.3.2: SHA-224 initial hash value `H⁽⁰⁾`. -/ --#
 def H0_224 : HashValue := #v[
   0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
   0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4
@@ -193,6 +201,7 @@ For SHA-256, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA256 --#
 
+/-- FIPS-180-4 §5.3.3: SHA-256 initial hash value `H⁽⁰⁾`. -/ --#
 def H0_256 : HashValue := #v[
   0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
   0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19
@@ -212,6 +221,7 @@ For SHA-384, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §5.3.4: SHA-384 initial hash value `H⁽⁰⁾`. -/ --#
 def H0_384 : HashValue := #v[
   0xcbbb9d5dc1059ed8, 0x629a292a367cd507, 0x9159015a3070dd17, 0x152fecd8f70e5939,
   0x67332667ffc00b31, 0x8eb44a8768581511, 0xdb0c2e0d64f98fa7, 0x47b5481dbefa4fa4
@@ -231,6 +241,7 @@ For SHA-512, the initial hash value, $H^{(0)}$, shall consist of the following e
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §5.3.5: SHA-512 initial hash value `H⁽⁰⁾`. -/ --#
 def H0_512 : HashValue := #v[
   0x6a09e667f3bcc908, 0xbb67ae8584caa73b, 0x3c6ef372fe94f82b, 0xa54ff53a5f1d36f1,
   0x510e527fade682d1, 0x9b05688c2b3e6c1f, 0x1f83d9abfb41bd6b, 0x5be0cd19137e2179

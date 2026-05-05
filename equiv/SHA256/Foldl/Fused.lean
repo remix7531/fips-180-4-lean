@@ -56,8 +56,7 @@ theorem getElem!_specScheduleStep_ne (M : Block) (t : Nat) (W : Schedule)
           simp [Vector.toArray_set!, Array.set!_eq_setIfInBounds, Array.setIfInBounds]
           intro h; grind
         rw [hwid]
-    · simp [getElem!_neg, hj', Vector.toArray_set!,
-            Array.set!_eq_setIfInBounds, Array.setIfInBounds]
+    · simp [getElem!_neg, hj']
   unfold specScheduleStep
   split <;> apply key
 

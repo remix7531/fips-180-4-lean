@@ -19,6 +19,8 @@ $0 \le \ell < 2^{128}$. The algorithm is defined in the exact same manner as SHA
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §6.6: SHA-512/224 — SHA-512 with `H0_512_224` IV, truncated to 224 bits. -/ --#
+@[nolint unusedArguments]
 def sha512_224 (M : Message) (_h : M.length < 2 ^ 128) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512_224
@@ -43,6 +45,8 @@ $0 \le \ell < 2^{128}$. The algorithm is defined in the exact same manner as SHA
 
 namespace SHA512 --#
 
+/-- FIPS-180-4 §6.7: SHA-512/256 — SHA-512 with `H0_512_256` IV, truncated to 256 bits. -/ --#
+@[nolint unusedArguments]
 def sha512_256 (M : Message) (_h : M.length < 2 ^ 128) : Digest 256 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512_256

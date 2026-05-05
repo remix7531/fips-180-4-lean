@@ -29,7 +29,7 @@ full-test:
 # --- Compare spec vs impl execution time on the full CAVP vector set ---
 
 bench:
-	bench/cavp.sh
+	tests/bench/cavp.sh
 
 # --- Large-input stress test against GNU sha256sum ---
 #
@@ -38,7 +38,7 @@ bench:
 # (small only) and impl, and compares against `sha256sum`.
 
 stress-gen:
-	bench/gen-stress.sh
+	tests/bench/gen-stress.sh
 
 stress: stress-gen
 	lake exe stress
@@ -61,12 +61,12 @@ html: docs
 	    docs/SHA512tHash.md \
 	    spec/99-trailer.md > docs/FIPS-PUB-180-4.md
 	pandoc docs/FIPS-PUB-180-4.md \
-		--lua-filter=support/toc-placement.lua \
-		--lua-filter=support/eqn-tag.lua \
+		--lua-filter=spec/support/toc-placement.lua \
+		--lua-filter=spec/support/eqn-tag.lua \
 		--standalone --katex=https://cdn.jsdelivr.net/npm/katex@latest/dist/ \
 		--highlight-style=tango \
-		--syntax-definition=support/lean.xml \
-		-H support/style.html \
+		--syntax-definition=spec/support/lean.xml \
+		-H spec/support/style.html \
 		-o docs/FIPS-180-4.html
 
 clean:

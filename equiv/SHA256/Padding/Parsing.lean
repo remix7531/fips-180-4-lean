@@ -43,7 +43,8 @@ private theorem fourBytes_take_drop (bs : ByteArray) (i j : Nat)
     [bs.data.toList[i * 64 + 4 * j]'(by rw [Array.length_toList, ByteArray.size_data]; omega),
      bs.data.toList[i * 64 + 4 * j + 1]'(by rw [Array.length_toList, ByteArray.size_data]; omega),
      bs.data.toList[i * 64 + 4 * j + 2]'(by rw [Array.length_toList, ByteArray.size_data]; omega),
-     bs.data.toList[i * 64 + 4 * j + 3]'(by rw [Array.length_toList, ByteArray.size_data]; omega)] := by
+     bs.data.toList[i * 64 + 4 * j + 3]'(by rw [Array.length_toList, ByteArray.size_data]; omega)
+    ] := by
   rw [List.drop_take, List.take_take, Nat.min_eq_left (by omega : 4 ≤ 64 - 4 * j),
       List.drop_drop]
   apply List.ext_getElem
