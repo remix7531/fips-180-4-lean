@@ -1,6 +1,7 @@
 import equiv.SHA256.Lift
 import equiv.Common.Bytes
 import equiv.Common.FromBits
+import Mathlib.Tactic.IntervalCases
 
 /-! # SHA-256 digest emission
 
@@ -33,9 +34,19 @@ def extractDigest (state : Impl.State) : Vector UInt8 32 :=
     let byteIdx := i.val % 4
     ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
 
+/-- Selector lemma at width 256: extracting the `k`-th LSB of
+`if x then 1 else 0` yields `x` at `k = 0` and `false` elsewhere. -/
+private theorem getLsbD_ifBit_256 (x : Bool) (k : Nat) :
+    (if x = true then (1 : BitVec 256) else 0).getLsbD k = (decide (k = 0) && x) := by
+  cases x <;> simp [BitVec.getLsbD_one]
+
+set_option maxHeartbeats 1600000 in
 /-- 4-byte big-endian decomposition of `w : UInt32`, MSB-first bits, fed
 to `Word.fromBits` at width 256, equals `w.toBitVec.zeroExtend 256`.
-Same shape as `ToU32s.fromBits_byteToBits` at width 256. -/
+Same shape as `ToU32s.fromBits_byteToBits` at width 256: unfold to a
+shifted-or expression on `BitVec 256`, then close via `getLsbD`
+extension over `i ∈ {0..255}`.  No `bv_decide`.  Bumps `maxHeartbeats`
+because the 256-way `interval_cases` enumeration is slow. -/
 private theorem fromBits_4bytes_BE_256 (w : UInt32) :
     SHS.Word.fromBits (n := 256)
       (((List.range 4).map fun b =>
@@ -50,7 +61,11 @@ private theorem fromBits_4bytes_BE_256 (w : UInt32) :
     List.nil_append, List.cons_append, List.append_nil, List.flatMap_cons,
     List.flatMap_nil, List.map_cons, List.map_nil, List.foldl,
     UInt8.toNat_testBit_eq_getLsbD]
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+    getLsbD_ifBit_256]
+  interval_cases i <;> simp
 
 private theorem flatMap_byteToBits_length (l : List UInt8) :
     (l.flatMap byteToBits).length = 8 * l.length := by

@@ -37,21 +37,33 @@ def fourBytesBits (bytes : Vector UInt8 64) (i : Fin 16) : List Bool :=
   byteToBits (bytes[4 * i.val + 2]'(by omega)) ++
   byteToBits (bytes[4 * i.val + 3]'(by omega))
 
+/-- Selector lemma: extracting the `k`-th LSB of `if x then 1 else 0`
+yields `x` at `k = 0` and `false` elsewhere.  Stated parametrically in
+`N` because both width `8` (per byte) and width `32` (per word) need it. -/
+private theorem getLsbD_ifBit (N : Nat) (x : Bool) (k : Nat) :
+    (if x = true then (1 : BitVec N) else 0).getLsbD k =
+      (decide (0 < N) && decide (k = 0) && x) := by
+  cases x <;> simp [BitVec.getLsbD_one]
+
 /-- `Word.fromBits` of one byte's MSB-first bit list equals the byte's
-underlying `BitVec 8`.  Unfolds `byteToBits` + the 8-step foldl, then
-the shared `UInt8.toNat_testBit_eq_getLsbD` simp lemma turns the goal
-into pure `BitVec 8` arithmetic that `bv_decide` discharges. -/
+underlying `BitVec 8`.  Unfolds `byteToBits` + the 8-step foldl into a
+shifted-or expression on `BitVec 8`, then closes via `getLsbD` extension
+plus an 8-way enumeration on the bit index. -/
 theorem fromBits_byteToBits (b : UInt8) :
     (SHS.Word.fromBits (n := 8) (byteToBits b)) = b.toBitVec := by
   unfold byteToBits SHS.Word.fromBits
   simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
     List.nil_append, List.cons_append, List.map_cons, List.map_nil, List.foldl,
     UInt8.toNat_testBit_eq_getLsbD]
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro i hi
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
+  interval_cases i <;> simp
 
 /-- Per-word bridge: the impl's `beU32` decode equals the spec's
 `Word.fromBits` over the 32 MSB-first bits of the same four bytes.
-Same shape as `fromBits_byteToBits` at width 32. -/
+Same shape as `fromBits_byteToBits` at width 32: unfold to shifted-or,
+then close via `getLsbD` extension over `i ∈ {0..31}`. -/
 theorem beU32_eq_fromBits (bytes : Vector UInt8 64) (i : Fin 16) :
     (Impl.beU32 bytes i).toBitVec =
       SHS.Word.fromBits (n := 32) (fourBytesBits bytes i) := by
@@ -63,7 +75,10 @@ theorem beU32_eq_fromBits (bytes : Vector UInt8 64) (i : Fin 16) :
   simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
     List.nil_append, List.cons_append, List.append_assoc, List.map_cons, List.map_nil,
     List.foldl, UInt8.toNat_testBit_eq_getLsbD]
-  bv_decide
+  apply BitVec.eq_of_getLsbD_eq
+  intro k hk
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
+  interval_cases k <;> simp
 
 /-! ## Block-level bridge
 
@@ -118,6 +133,6 @@ theorem toU32sFromBytes_eq_toU32s (data : ByteArray) (off : Nat) :
   -- `Vector.ofFn` β-reductions plus an associativity normalization.
   simp only [Impl.toU32sFromBytes, Impl.toU32s, Impl.beU32FromBytes, Impl.beU32,
     Vector.getElem_ofFn, ← Nat.add_assoc]
-  decide
+  interval_cases i <;> rfl
 
 end SHS.Equiv.SHA256.ToU32s
