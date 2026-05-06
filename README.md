@@ -41,14 +41,10 @@ from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.
 The `impl/` implementation and `equiv/` proofs cover only SHA-256;
 the other algorithms are spec-only.
 
-* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with
-  the spec's per-block compression function.  Depends only on Lean
-  core's classical axioms (`propext`, `Classical.choice`, `Quot.sound`).
-* `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with
-  `SHS.SHA256.sha256` for all `data` with `data.size < 2 ^ 61` (the
-  FIPS 180-4 §5.1.1 bit-length cap).  Adds `Lean.ofReduceBool` and
-  `Lean.trustCompiler` from three `bv_decide` calls in the byte ↔
-  `BitVec` bridges.  See `equiv/AxiomCheck.lean` for the pinned set.
+* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with the spec's per-block compression function.
+* `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with `SHS.SHA256.sha256` for all `data` with `data.size < 2 ^ 61` (the FIPS 180-4 §5.1.1 bit-length cap).
+
+Both depend only on Lean core's classical axioms (`propext`, `Classical.choice`, `Quot.sound`); see `equiv/AxiomCheck.lean` for the pinned set, which fails the build if a new axiom is introduced.
 
 The proofs equate the **Lean source** of impl and spec; they do not
 cover bugs in the Lean compiler, C toolchain, or runtime.

@@ -137,8 +137,9 @@ theorem get!_implPaddedBytes_length (data : ByteArray) (i : Nat)
 
 A single closed-form per-byte rule for `(implPaddedBytes data).get! pos`,
 covering all four cases (data / 0x80 / zero-pad / length-tag) in one
-statement.  The four `paddedBlock_*` formulas below are 5-line
-specialisations of this lemma. -/
+statement.  The `paddedBlock_*` formulas below specialise it to the
+relevant block (the `_complete` case bypasses it and unfolds
+`get!_implPaddedBytes_data` directly). -/
 
 /-- The byte at position `pos` of the padded data follows one of four
 rules: the original data byte (`pos < data.size`), the `0x80` separator

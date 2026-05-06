@@ -14,12 +14,10 @@ expression.  Together with the operator bridges from `Bridge.lean`,
 this lets the round-body equivalence in `Compress.lean` reduce to
 `simp`.
 
-Proof shape (for all six lemmas):
-1. Unfold the spec definition.
-2. `simp only` with the operator bridges from `Bridge.lean` to push
-   `toBitVec` to the leaves.
-3. `bv_decide` for the bitvector identity that remains
-   (the `rfl`-shaped `Ch` case skips this step).
+Proof shape (for all six lemmas): unfold the spec definition, then
+`simp only` with the operator bridges from `Bridge.lean` to push
+`toBitVec` to the leaves; what remains closes by `ac_rfl` (or by `simp`
+in the `Ch` case, which is `rfl` up to instance unfolding).
 -/
 
 open SHS.Equiv.SHA256.Bridge

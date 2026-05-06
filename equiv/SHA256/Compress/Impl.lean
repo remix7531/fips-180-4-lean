@@ -7,9 +7,10 @@ import Mathlib.Tactic.IntervalCases
 /-! # Compression equivalence — implementation-side factoring
 
 The implementation's `compress` is imperative; this file recasts it as
-a pure `Fin.foldl 64` (`implCompressFoldl`), agreeing with the source
-by `rfl`, and proves the per-step bridge lemmas that connect the impl
-fold's transitions to the spec's `specScheduleStep` /
+a pure `Fin.foldl 64` (`implCompressFoldl`), proves the agreement with
+`Impl.compress` via a `RoundState ↔ (Block, State)` fold-homomorphism
+(`impl_compress_eq_foldl`), and proves the per-step bridge lemmas that
+connect the impl fold's transitions to the spec's `specScheduleStep` /
 `specRoundStep` primitives.
 
 These per-step bridges are stated as standalone lemmas (independent
@@ -94,23 +95,9 @@ def implCompressFoldl (state : Impl.State) (block : Impl.Block) : Impl.State :=
   let (_, s') := Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)
   Vector.zipWith (· + ·) state s'
 
-/-- A chain of eight `Vector.set`s at indices 0..7 collapses to the
-literal vector with those values.  Used to bridge `Impl.compress`'s
-in-place-update body (which is faster: the sequential `Vector.set`s
-become refcount-1 in-place mutations under codegen) to
-`implFusedStep`'s `#v[...]` form (which is the natural shape for the
-spec equivalence proofs). -/
-private theorem set8_eq_mk {α : Type _} (s : Vector α 8) (v0 v1 v2 v3 v4 v5 v6 v7 : α) :
-    (((((((s.set 0 v0).set 1 v1).set 2 v2).set 3 v3).set 4 v4).set 5 v5).set 6 v6).set 7 v7
-      = #v[v0, v1, v2, v3, v4, v5, v6, v7] := by
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> simp
-
-/-- After `simp only [set8_eq_mk]` collapses both the per-round set chain
-and the final hash-add set chain in `Impl.compress` to `#v[...]` form,
-this lemma closes the bridge to `implCompressFoldl`'s `Vector.zipWith`
-epilogue. -/
+/-- Used in `impl_compress_eq_foldl` to convert `implCompressFoldl`'s
+`Vector.zipWith` epilogue into the same 8-element literal shape as
+`impl_compress_eq_foldl_form`'s reduction of `Impl.compress`. -/
 private theorem zipWith_add_eq_mk (state s' : Impl.State) :
     Vector.zipWith (· + ·) state s' =
       #v[ state[0] + s'[0], state[1] + s'[1], state[2] + s'[2], state[3] + s'[3],

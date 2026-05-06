@@ -19,8 +19,8 @@ can reduce mixed `UInt32`/`BitVec 32` expressions by `simp` alone.
 * `toBitVec_{xor,and,not,add}` — pointwise `rfl` bridges (always defeq).
 * `toBitVec_shr_of_lt` — shift bridge (needs `n.toNat < 32` because of
   the implicit `% 32` baked into `UInt32.>>>`).
-* `toBitVec_rotr` / `ROTR_eq_rotateRight` / `ROTR_eq_u32_rotr` —
-  rotation bridges, in three flavors used at different proof sites.
+* `toBitVec_rotr` / `ROTR_eq_rotateRight` — rotation bridges; the
+  bigSigma/smallSigma proofs in `Functions.lean` chain them.
 * `SHR_eq_shr` — spec `SHR n` is just `>>> n` on `BitVec`.
 
 ## Operator-notation map (spec ↔ equiv/impl)
@@ -120,13 +120,6 @@ theorem ROTR_eq_rotateRight (n : Nat) (x : BitVec 32) (h : n < 32) :
   rw [BitVec.rotateRight_eq_rotateRightAux_of_lt h]
   unfold BitVec.rotateRightAux
   rfl
-
-/-- End-to-end bridge: spec `ROTR n.toNat` on a lifted `UInt32` equals
-the lifted impl `Impl.UInt32.rotr x n`.  This is the form needed by the
-`bigSigma`/`smallSigma` bridge proofs. -/
-theorem ROTR_eq_u32_rotr (n : UInt32) (x : UInt32) (h0 : 0 < n.toNat) (h : n.toNat < 32) :
-    SHS.ROTR n.toNat x.toBitVec = (Impl.UInt32.rotr x n).toBitVec := by
-  rw [toBitVec_rotr _ _ h0 h, ROTR_eq_rotateRight _ _ h]
 
 /-! ## SHR bridge -/
 

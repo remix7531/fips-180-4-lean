@@ -6,16 +6,17 @@ import equiv.SHA256.Padding.Parsing
 
 /-! # Pipeline composition helpers
 
-Lemmas that compose the per-block bridges (`Compress.lean`) with the
-block-list view (`Padding/Equiv.lean`) into the chain steps consumed
-by `Main.lean`'s top-level `sha256_correct` rewrite.
+Lemmas that compose the per-block bridges (`Compress/Impl.lean` +
+`Compress/Match.lean`) with the parse-and-pad bridge
+(`Padding/Parsing.lean`) into the chain steps consumed by `Main.lean`'s
+top-level `sha256_correct` rewrite.
 
 ## When to read this file
 
-Open `Pipeline.lean` after `Compress.lean` (single-block bridge) and
-`Padding/Equiv.lean` (single-input bridge) are understood, and *before*
-reading `Main.lean`'s `sha256_correct`.  Each lemma here is exactly one
-link of that final rewrite chain:
+Open `Pipeline.lean` after `Compress/{Impl,Match}.lean` (single-block
+bridge) and `Padding/Parsing.lean` (parse-of-pad bridge) are understood,
+and *before* reading `Main.lean`'s `sha256_correct`.  Each lemma here is
+exactly one link of that final rewrite chain:
 
 * `bitLen_lt_of_size_lt` lifts the byte-size bound to the bit-length
   bound consumed by the spec.

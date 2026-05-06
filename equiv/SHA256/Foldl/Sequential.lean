@@ -111,7 +111,8 @@ viewed through `tupleToVec`. -/
       initVars H := by
   unfold initVars tupleToVec; rfl
 
-/-- The post-loop tuple-projection array matches `addH H` through `tupleToVec`. -/
+/-- `addH H` applied to a `tupleToVec`-converted tuple equals the
+explicit 8-element vector adding each tuple projection to `H[i]!`. -/
 @[simp] theorem addH_tupleToVec (H : HashValue) (r : SpecVarsTuple) :
     addH H (tupleToVec r) =
       (#v[r.fst + H[0]!, r.snd.fst + H[1]!, r.snd.snd.fst + H[2]!,
@@ -202,7 +203,6 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
       ⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ := by
     rw [hH 0, hH 1, hH 2, hH 3, hH 4, hH 5, hH 6, hH 7]
   rw [hinit_eq]
-  -- Bridge forIn' → forIn.
   rw [show Id.run (forIn' [0:64]
           (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple)
           bodyTup) =

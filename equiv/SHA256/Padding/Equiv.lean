@@ -10,8 +10,8 @@ import equiv.Common.ArrayFold
 The headline equivalence between the implementation's imperative
 streaming `Impl.sha256` and a clean block-list re-statement
 (`implSha256Refactored`) that mirrors the spec's shape.  Both compute
-the same digest by `rfl` after a final fold-peeling case-split on
-`data.size % 64 < 56`.
+the same digest, proved by case-splitting on `data.size % 64 < 56`
+and peeling the last (or last two) iterations of the impl's `Fin.foldl`.
 
 The byte→bit decoding lemmas live in `Padding/ByteDecoding`; the
 byte-level / bit-level parse bridge lives in `Padding/Parsing`. This

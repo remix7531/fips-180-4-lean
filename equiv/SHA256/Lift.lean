@@ -6,13 +6,13 @@ import spec.HashAlgorithms
 
 The implementation uses sized vectors of `UInt32` for the working state
 (`Impl.State = Vector UInt32 8`) and message block (`Impl.Block =
-Vector UInt32 16`).  The spec uses `Array (BitVec 32)` (under the
-`HashValue` and `Block` notations from `spec/HashAlgorithms.lean`),
-indexed by the panicking accessor `_[i]!`.
+Vector UInt32 16`).  The spec, in the SHA-256 namespace, uses
+`Vector (BitVec 32) 8` and `Vector (BitVec 32) 16` (under the
+`HashValue` and `Block` notations from `spec/Functions.lean`).
 
 This file defines the lifting maps `toSpecState` / `toSpecBlock` and
 proves the size and indexing facts the equivalence proof relies on.
-The four lemmas are all `@[simp]` so that downstream `simp` calls can
+The three lemmas are all `@[simp]` so that downstream `simp` calls can
 freely commute lifting with size queries and indexing.
 -/
 
@@ -36,9 +36,9 @@ def toSpecBlock (b : Impl.Block) : Block :=
 
 /-! ## Indexing simp lemmas
 
-Bridge the spec's panicking `_[i]!` access on a lifted container to the
-implementation's bounds-checked `_[i]` access.  Phrased over `Fin n` so
-the bound is automatic. -/
+Bridge spec-side indexing on a lifted container to the implementation's
+bounds-checked `_[i]` access.  Phrased over `Fin n` so the bound is
+automatic. -/
 
 @[simp] theorem getElem!_toSpecState (s : Impl.State) (i : Fin 8) :
     (toSpecState s)[i.val]! = s[i].toBitVec := by

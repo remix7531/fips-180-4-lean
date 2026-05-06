@@ -13,7 +13,8 @@ local macro_rules
         | grind
         | (first
               | (have := ‹_ ∈ _›.upper; have := ‹_ ∈ _›.lower; grind)
-              | (have := ‹_ ∈ _›.upper; grind)))
+              | (have := ‹_ ∈ _›.upper; grind)
+              | (grind [Nat.and_le_right])))
 --#--
 
 namespace SHS --#
@@ -151,7 +152,7 @@ def compress_alt (H : HashValue) (M : Block) : HashValue := Id.run do
   let mut e := H[4]
   -- Step 3. For t = 0 to 79
   for h : t in [0:80] do
-    let s := t % 16  -- s = t ∧ MASK, where MASK = 0x0000000f
+    let s := t &&& 0xf
     if t ≥ 16 then
       W[s] := ROTL 1 (W[(s+13) % 16] ⊕ W[(s+8) % 16] ⊕ W[(s+2) % 16] ⊕ W[s])
     let T := ROTL 5 a + f t b c d + e + K t + W[s]

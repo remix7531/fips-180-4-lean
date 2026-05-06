@@ -86,7 +86,7 @@ preserves the `MatchAfter` invariant.  Inductive step for
 The proof discharges the four conjuncts independently; `vars_match`
 enumerates the eight working-variable indices via `interval_cases`
 because a `∀ k : Fin 8` packaging would block `Vector.getElem_mk`
-matching (see the dropped attempt in `Compress/Impl.lean`). -/
+matching. -/
 theorem MatchAfter_step
     (block₀ : Impl.Block)
     (impl_block : Impl.Block) (impl_state : Impl.State)
@@ -122,9 +122,10 @@ theorem MatchAfter_step
     have ⟨k_val, _k_lt⟩ := k
     -- For each of the 8 working-variable indices, the round-body equation has
     -- the same shape: unfold both sides, push `toBitVec` to the leaves via the
-    -- `_toBitVec` simp set, then either close immediately (`hw` already
-    -- discharges 7 of the 8 cases) or finish the `a`-position with the
-    -- `Σ₀ + Maj + …` reassociation (`ac_rfl`).
+    -- `_toBitVec` simp set (which includes `hw` for the freshly written
+    -- schedule entry).  Seven cases are then variable shifts and close by
+    -- `assumption` against `h0..h7`; the `a`-case requires the
+    -- `Σ₀ + Maj + …` reassociation and finishes with `ac_rfl`.
     interval_cases k_val <;>
       (unfold implRoundBody specRoundStep
        simp only [Fin.getElem_fin, Vector.getElem_mk, List.getElem_toArray,
