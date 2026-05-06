@@ -16,10 +16,10 @@ package «fips-pub-180-4» where
   lintDriver := "batteries/runLinter"
 
 require mdgen from git
-  "https://github.com/Seasawher/mdgen" @ "v4.28.0-rc1"
+  "https://github.com/Seasawher/mdgen" @ "v4.29.0-rc8"
 
 require mathlib from git
-  "https://github.com/leanprover-community/mathlib4" @ "v4.28.0-rc1"
+  "https://github.com/leanprover-community/mathlib4" @ "v4.29.1"
 
 @[default_target]
 lean_lib spec where
