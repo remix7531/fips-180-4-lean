@@ -73,7 +73,7 @@ def schedule (M : Block) : Schedule := Id.run do
   -- For 16 ≤ t ≤ 79: W_t = ROTL^1(W_{t-3} ⊕ W_{t-8} ⊕ W_{t-14} ⊕ W_{t-16})
   for h : t in [16:80] do
     W[t] := ROTL 1 (W[t-3] ⊕ W[t-8] ⊕ W[t-14] ⊕ W[t-16])
-  return W
+  W
 
 /-!  -/
 
@@ -96,7 +96,7 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
     b := a
     a := T
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
+  #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
 
 /-!
 After repeating steps one through four a total of $N$ times (i.e., after processing
@@ -106,7 +106,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 -/
 
 /-- FIPS-180-4 §6.1: SHA-1 hash of a message `M` (length < 2⁶⁴ bits) → 160-bit digest. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha1 (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0
@@ -162,7 +162,7 @@ def compress_alt (H : HashValue) (M : Block) : HashValue := Id.run do
     b := a
     a := T
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
+  #v[a + H[0], b + H[1], c + H[2], d + H[3], e + H[4]]
 
 /-!
 After repeating steps one through four a total of $N$ times (i.e., after processing
@@ -172,7 +172,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)}$$
 -/
 
 /-- FIPS-180-4 §6.1.3: SHA-1 hash via the alternate (circular schedule) method. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha1_alt (M : Message) (_h : M.length < 2 ^ 64) : Digest 160 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress_alt H0
@@ -230,7 +230,7 @@ def schedule (M : Block) : Schedule := Id.run do
   -- For 16 ≤ t ≤ 63: W_t = σ_1^(256)(W_{t-2}) + W_{t-7} + σ_0^(256)(W_{t-15}) + W_{t-16}
   for h : t in [16:64] do
     W[t] := smallSigma1 W[t-2] + W[t-7] + smallSigma0 W[t-15] + W[t-16]
-  return W
+  W
 
 /-!  -/
 
@@ -260,7 +260,7 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
     b := a
     a := T1 + T2
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #v[
+  #v[
     a + H[0], b + H[1], c + H[2], d + H[3],
     e + H[4], f + H[5], g + H[6], h + H[7]
   ]
@@ -274,7 +274,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \|
 -/
 
 /-- FIPS-180-4 §6.2: SHA-256 hash of a message `M` (length < 2⁶⁴ bits) → 256-bit digest. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha256 (M : Message) (_h : M.length < 2 ^ 64) : Digest 256 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_256
@@ -299,7 +299,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)} \| 
 namespace SHA256 --#
 
 /-- FIPS-180-4 §6.3: SHA-224 hash — SHA-256 with `H0_224` IV, truncated to 224 bits. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha224 (M : Message) (_h : M.length < 2 ^ 64) : Digest 224 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_224
@@ -347,7 +347,7 @@ def schedule (M : Block) : Schedule := Id.run do
   -- For 16 ≤ t ≤ 79: W_t = σ_1^(512)(W_{t-2}) + W_{t-7} + σ_0^(512)(W_{t-15}) + W_{t-16}
   for h : t in [16:80] do
     W[t] := smallSigma1 W[t-2] + W[t-7] + smallSigma0 W[t-15] + W[t-16]
-  return W
+  W
 
 /-!  -/
 
@@ -377,7 +377,7 @@ def compress (H : HashValue) (M : Block) : HashValue := Id.run do
     b := a
     a := T1 + T2
   -- Step 4. Compute the i-th intermediate hash value H^(i)
-  return #v[
+  #v[
     a + H[0], b + H[1], c + H[2], d + H[3],
     e + H[4], f + H[5], g + H[6], h + H[7]
   ]
@@ -391,7 +391,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)} \|
 -/
 
 /-- FIPS-180-4 §6.4: SHA-512 hash of a message `M` (length < 2¹²⁸ bits) → 512-bit digest. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha512 (M : Message) (_h : M.length < 2 ^ 128) : Digest 512 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_512
@@ -416,7 +416,7 @@ $$H_0^{(N)} \| H_1^{(N)} \| H_2^{(N)} \| H_3^{(N)} \| H_4^{(N)} \| H_5^{(N)}$$
 namespace SHA512 --#
 
 /-- FIPS-180-4 §6.5: SHA-384 hash — SHA-512 with `H0_384` IV, truncated to 384 bits. -/ --#
-@[nolint unusedArguments]
+@[nolint unusedArguments] --#
 def sha384 (M : Message) (_h : M.length < 2 ^ 128) : Digest 384 :=
   let blocks := parse (pad M)
   let H := blocks.foldl compress H0_384
