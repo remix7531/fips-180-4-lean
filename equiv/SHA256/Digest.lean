@@ -34,24 +34,31 @@ def extractDigest (state : Impl.State) : Vector UInt8 32 :=
     let byteIdx := i.val % 4
     ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
 
-/-- Selector lemma at width 256: extracting the `k`-th LSB of
-`if x then 1 else 0` yields `x` at `k = 0` and `false` elsewhere. -/
-private theorem getLsbD_ifBit_256 (x : Bool) (k : Nat) :
-    (if x = true then (1 : BitVec 256) else 0).getLsbD k = (decide (k = 0) && x) := by
-  cases x <;> simp [BitVec.getLsbD_one]
+/-! ### Per-width `fromBits` 4-byte big-endian reconstruction
 
-set_option maxHeartbeats 1600000 in
-/-- 4-byte big-endian decomposition of `w : UInt32`, MSB-first bits, fed
-to `Word.fromBits` at width 256, equals `w.toBitVec.zeroExtend 256`.
-Same shape as `ToU32s.fromBits_byteToBits` at width 256: unfold to a
-shifted-or expression on `BitVec 256`, then close via `getLsbD`
-extension over `i ∈ {0..255}`.  No `bv_decide`.  Bumps `maxHeartbeats`
-because the 256-way `interval_cases` enumeration is slow. -/
-private theorem fromBits_4bytes_BE_256 (w : UInt32) :
-    SHS.Word.fromBits (n := 256)
+The core identity — `fromBits N (4 bytes of w) = w.toBitVec.zeroExtend N`
+— is proved once at the *small* ground width 32 and lifted to every
+larger target via `fromBits_setWidth_eq`.  Future SHA-512-family digest
+widths (512, 384, 224, 256 of 64-bit words) will follow the same shape:
+a parallel `fromBits_8bytes_BE_64` ground lemma + the same universal
+lift used by all four truncations.  This avoids re-running a per-width
+`N`-way `interval_cases` at every digest size. -/
+
+/-- Selector lemma at any positive width.  Width-generic so the same
+body serves every SHA-2 digest width. -/
+private theorem getLsbD_ifBit_pos {N : Nat} (hN : 0 < N) (x : Bool) (k : Nat) :
+    (if x = true then (1 : BitVec N) else 0).getLsbD k = (decide (k = 0) && x) := by
+  cases x <;> simp [BitVec.getLsbD_one, hN]
+
+/-- 32-bit ground identity: at the *native* width of a `UInt32`, the
+4-byte BE bit list packs back to exactly `w.toBitVec`.  This is the only
+place `interval_cases` runs (32 cases, fast); every wider digest
+specialisation lifts via `setWidth` without re-enumerating. -/
+private theorem fromBits_4bytes_BE_32 (w : UInt32) :
+    SHS.Word.fromBits (n := 32)
       (((List.range 4).map fun b =>
         ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits)
-    = (w.toBitVec).zeroExtend 256 := by
+    = w.toBitVec := by
   unfold byteToBits SHS.Word.fromBits
   simp only [show UInt32.ofNat ((3 - 0) * 8) = 24 from rfl,
     show UInt32.ofNat ((3 - 1) * 8) = 16 from rfl,
@@ -64,7 +71,7 @@ private theorem fromBits_4bytes_BE_256 (w : UInt32) :
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
   simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
-    getLsbD_ifBit_256]
+    getLsbD_ifBit_pos (by decide : (0 : Nat) < 32)]
   interval_cases i <;> simp
 
 private theorem flatMap_byteToBits_length (l : List UInt8) :
@@ -75,6 +82,30 @@ private theorem flatMap_byteToBits_length (l : List UInt8) :
     simp only [List.flatMap_cons, List.length_append, byteToBits_length, ih,
       List.length_cons]
     omega
+
+private theorem fromBits_byteToBits_length (w : UInt32) :
+    (((List.range 4).map fun b =>
+      ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits).length = 32 := by
+  rw [flatMap_byteToBits_length, List.length_map, List.length_range]
+
+/-- 4-byte BE reconstruction at any width `N ≥ 32`.  One-line corollary
+of the 32-bit ground identity plus the universal `fromBits_setWidth_eq`
+lift: per-width cost is constant in `N`. -/
+theorem fromBits_4bytes_BE_ge32 {N : Nat} (hN : 32 ≤ N) (w : UInt32) :
+    SHS.Word.fromBits (n := N)
+      (((List.range 4).map fun b =>
+        ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits)
+    = (w.toBitVec).zeroExtend N := by
+  rw [← fromBits_setWidth_eq (M := 32) _ (by rw [fromBits_byteToBits_length])
+        (by rw [fromBits_byteToBits_length]; exact hN),
+      fromBits_4bytes_BE_32]
+
+private theorem fromBits_4bytes_BE_256 (w : UInt32) :
+    SHS.Word.fromBits (n := 256)
+      (((List.range 4).map fun b =>
+        ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits)
+    = (w.toBitVec).zeroExtend 256 :=
+  fromBits_4bytes_BE_ge32 (by decide) w
 
 -- The RHS lists eight parallel `(List.range 4).map …` chunks, one per word
 -- index 0..7; the per-word lines are intentionally aligned for visual symmetry
