@@ -95,6 +95,13 @@ def H256_256 : Vector UInt32 8 :=
   ⟨#[0x6a09e667, 0xbb67ae85, 0x3c6ef372, 0xa54ff53a,
      0x510e527f, 0x9b05688c, 0x1f83d9ab, 0x5be0cd19], rfl⟩
 
+/-- Initial hash value for SHA-224 (FIPS 180-4 §5.3.2).  Consumed by
+`sha224`, which otherwise shares the SHA-256 compression machinery
+and truncates the final state to its left-most 224 bits. -/
+def H256_224 : Vector UInt32 8 :=
+  ⟨#[0xc1059ed8, 0x367cd507, 0x3070dd17, 0xf70e5939,
+     0xffc00b31, 0x68581511, 0x64f98fa7, 0xbefa4fa4], rfl⟩
+
 /-- Round constants for SHA-256 (FIPS 180-4 §4.2.2). -/
 def K32 : Vector UInt32 64 :=
   ⟨#[0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
@@ -270,7 +277,40 @@ def compress (state : State) (block : Block) : State :=
   #v[ state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
       state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h ]
 
-/-! ## §6.2  Top-level `sha256` -/
+/-! ## §6.2  Top-level `sha256` / `sha224`
+
+`sha256State` is the IV-parameterised core: streaming-padded SHA-2-256
+compression from an arbitrary initial 8-word state.  `sha256` and
+`sha224` are thin wrappers — same compression machinery, different IV
+(`H256_256` vs `H256_224`) and digest truncation (32 vs 28 bytes).
+`@[inline]` keeps the codegen for each wrapper identical to a single
+monolithic definition. -/
+
+/-- Post-size-check streaming-padded SHA-2-256 transform: applies
+compression over `data` (FIPS 180-4 §5.1.1 padding) starting from `H0`
+and returns the final 8-word state.  Shared by `sha256` and `sha224`. -/
+@[inline] def sha256State (data : ByteArray) (H0 : State) : State :=
+  let blocks    := data.size / 64
+  let remaining := data.size % 64
+  let totalBits : UInt64 := data.size.toUInt64 <<< 3
+  -- Per-full-block loop, reading bytes directly from `data` (skips
+  -- the per-block `Vector UInt8 64` intermediate).
+  let state : State := Fin.foldl blocks (fun state (i : Fin blocks) =>
+    compress state (toU32sFromBytes data (i.val * 64))) H0
+  -- Final block(s) with FIPS 180-4 §5.1.1 padding.
+  let finalBlockA : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
+    if i.val < remaining then data.get! (blocks * 64 + i.val)
+    else if i.val = remaining then 0x80
+    else 0
+  let (state, finalBlockB) :=
+    if remaining < 56 then (state, finalBlockA)
+    else
+      (compress state (toU32s finalBlockA),
+       Vector.ofFn (fun _ : Fin 64 => (0 : UInt8)))
+  let finalBlockC : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
+    if i.val < 56 then finalBlockB[i]
+    else ((totalBits >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8
+  compress state (toU32s finalBlockC)
 
 /-- Streaming-padded SHA-256.
 
@@ -285,29 +325,28 @@ def sha256 (data : ByteArray) : Vector UInt8 32 :=
     panic! s!"SHS.SHA256.Impl.sha256: input size {data.size} bytes exceeds \
               FIPS 180-4 §5.1.1 limit (2^61 bytes)"
   else
-  let blocks    := data.size / 64
-  let remaining := data.size % 64
-  let totalBits : UInt64 := data.size.toUInt64 <<< 3
-  -- Per-full-block loop, reading bytes directly from `data` (skips
-  -- the per-block `Vector UInt8 64` intermediate).
-  let state : State := Fin.foldl blocks (fun state (i : Fin blocks) =>
-    compress state (toU32sFromBytes data (i.val * 64))) H256_256
-  -- Final block(s) with FIPS 180-4 §5.1.1 padding.
-  let finalBlockA : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
-    if i.val < remaining then data.get! (blocks * 64 + i.val)
-    else if i.val = remaining then 0x80
-    else 0
-  let (state, finalBlockB) :=
-    if remaining < 56 then (state, finalBlockA)
-    else
-      (compress state (toU32s finalBlockA),
-       Vector.ofFn (fun _ : Fin 64 => (0 : UInt8)))
-  let finalBlockC : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
-    if i.val < 56 then finalBlockB[i]
-    else ((totalBits >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8
-  let state := compress state (toU32s finalBlockC)
+  let state := sha256State data H256_256
   -- Convert state to output bytes (big-endian).
   Vector.ofFn fun i : Fin 32 =>
+    let wordIdx : Fin 8 := ⟨i.val / 4, by omega⟩
+    let byteIdx := i.val % 4
+    ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
+
+/-- Streaming-padded SHA-224 (FIPS 180-4 §6.3).  Shares the SHA-256
+compression machinery but uses the SHA-224 IV `H256_224` and truncates
+the final 32-byte big-endian state to its left-most 28 bytes (224 bits).
+
+The §5.1.1 size bound is identical to SHA-256: the per-message
+bit-length `data.size.toUInt64 <<< 3` would wrap for `data.size ≥ 2^61`,
+so the panic branch is unreachable inside the verified region (see
+`SHS.Equiv.SHA256.sha224_correct`). -/
+def sha224 (data : ByteArray) : Vector UInt8 28 :=
+  if 2 ^ 61 ≤ data.size then
+    panic! s!"SHS.SHA256.Impl.sha224: input size {data.size} bytes exceeds \
+              FIPS 180-4 §5.1.1 limit (2^61 bytes)"
+  else
+  let state := sha256State data H256_224
+  Vector.ofFn fun i : Fin 28 =>
     let wordIdx : Fin 8 := ⟨i.val / 4, by omega⟩
     let byteIdx := i.val % 4
     ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8

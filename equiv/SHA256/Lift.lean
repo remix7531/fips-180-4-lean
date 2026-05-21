@@ -62,4 +62,16 @@ automatic. -/
   match i, hi with
   | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
 
+/-- The impl's SHA-224 IV `H256_224` lifts to the spec's `H0_224`.
+    Same eight-index enumeration shape as `toSpecState_H256_256`; the
+    impl's `UInt32` literals and the spec's `BitVec 32` literals match
+    pointwise via `rfl`. -/
+@[simp] theorem toSpecState_H256_224 :
+    toSpecState Impl.H256_224 = SHS.SHA256.H0_224 := by
+  apply Vector.ext; intro i hi
+  unfold toSpecState Impl.H256_224 SHS.SHA256.H0_224
+  rw [Vector.getElem_map]
+  match i, hi with
+  | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
+
 end SHS.Equiv.SHA256.Lift

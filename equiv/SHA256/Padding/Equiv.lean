@@ -28,13 +28,18 @@ namespace SHS.Equiv.SHA256.Padding.Equiv
 
 open scoped SHS.SHA256
 
+/-- IV-generic block-list re-statement of `Impl.sha256State`: fold
+`Impl.compress` over `implPaddedBlocks data` starting from `H0`.  Shared
+core for `implSha256Refactored` (SHA-256, IV `H256_256`) and
+`implSha224Refactored` (SHA-224, IV `H256_224`). -/
+def implSha256StateRefactored (data : ByteArray) (H0 : Impl.State) : Impl.State :=
+  (implPaddedBlocks data).foldl (fun s b => Impl.compress s (Impl.toU32s b)) H0
+
 /-- A clean, block-list re-statement of `Impl.sha256` that mirrors the
 spec: compress all `implPaddedBlocks data` from `H256_256`, then emit
 big-endian state bytes. -/
 def implSha256Refactored (data : ByteArray) : Vector UInt8 32 :=
-  let blocks := implPaddedBlocks data
-  let state := blocks.foldl (fun s b => Impl.compress s (Impl.toU32s b)) Impl.H256_256
-  extractDigest state
+  extractDigest (implSha256StateRefactored data Impl.H256_256)
 
 /-- Definitional unfolding of `implSha256Refactored` as a chain step. -/
 theorem implSha256Refactored_eq_extractDigest (data : ByteArray) :
@@ -42,15 +47,15 @@ theorem implSha256Refactored_eq_extractDigest (data : ByteArray) :
       extractDigest ((implPaddedBlocks data).foldl
         (fun s b => Impl.compress s (Impl.toU32s b)) Impl.H256_256) := rfl
 
-private theorem impl_sha256_eq_extract (data : ByteArray) (hsize : data.size < 2 ^ 61) :
-    Impl.sha256 data = extractDigest (
+private theorem impl_sha256State_eq_extract (data : ByteArray) (H0 : Impl.State) :
+    Impl.sha256State data H0 =
       let blocks := data.size / 64
       let remaining := data.size % 64
       let totalBits : UInt64 := data.size.toUInt64 <<< 3
       let state : Impl.State := Fin.foldl blocks (fun state (i : Fin blocks) =>
         let block : Vector UInt8 64 := Vector.ofFn fun j : Fin 64 =>
           data.get! (i.val * 64 + j.val)
-        Impl.compress state (Impl.toU32s block)) Impl.H256_256
+        Impl.compress state (Impl.toU32s block)) H0
       let finalBlockA : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
         if i.val < remaining then data.get! (blocks * 64 + i.val)
         else if i.val = remaining then 0x80
@@ -63,25 +68,21 @@ private theorem impl_sha256_eq_extract (data : ByteArray) (hsize : data.size < 2
       let finalBlockC : Vector UInt8 64 := Vector.ofFn fun i : Fin 64 =>
         if i.val < 56 then finalBlockB[i]
         else ((totalBits >>> (((63 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8
-      Impl.compress state (Impl.toU32s finalBlockC)) := by
-  unfold Impl.sha256
-  rw [if_neg (Nat.not_le.mpr hsize)]
+      Impl.compress state (Impl.toU32s finalBlockC) := by
+  unfold Impl.sha256State
   -- Bridge the fast-path `toU32sFromBytes` reads (used in the impl
   -- definition) to the `toU32s ∘ Vector.ofFn` shape the spec
   -- equivalence is stated against.
   simp only [SHS.Equiv.SHA256.ToU32s.toU32sFromBytes_eq_toU32s]
-  rfl
 
-/-- `Impl.sha256` agrees with the cleaner block-list refactoring.
-The `< 56` / `≥ 56` case-split mirrors `Impl.sha256`'s own conditional
-emission of one vs two final blocks.  The `data.size < 2 ^ 61`
-hypothesis discharges the runtime size guard at the top of `Impl.sha256`
-(see FIPS 180-4 §5.1.1). -/
-theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61) :
-    Impl.sha256 data = implSha256Refactored data := by
-  rw [impl_sha256_eq_extract _ hsize]
-  show _ = extractDigest _
-  apply congrArg extractDigest
+/-- IV-generic refactor: `Impl.sha256State` (the shared SHA-2-256 core)
+equals folding `Impl.compress` over `implPaddedBlocks data` from `H0`.
+The `< 56` / `≥ 56` case-split mirrors `sha256State`'s own conditional
+emission of one vs two final blocks. -/
+theorem impl_sha256State_eq_refactored (data : ByteArray) (H0 : Impl.State) :
+    Impl.sha256State data H0 = implSha256StateRefactored data H0 := by
+  rw [impl_sha256State_eq_extract _ H0]
+  unfold implSha256StateRefactored
   rw [implPaddedBlocks_foldl]
   by_cases h : data.size % 64 < 56
   · rw [totalBlocks_lt56 _ h]
@@ -92,12 +93,12 @@ theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61
         (fun (state : Impl.State) (i : Fin (data.size / 64)) =>
           Impl.compress state (Impl.toU32s
             (Vector.ofFn fun j : Fin 64 => data.get! (i.val * 64 + j.val))))
-        Impl.H256_256
+        H0
         =
       Fin.foldl (data.size / 64)
         (fun (s : Impl.State) (i : Fin (data.size / 64)) =>
           Impl.compress s (Impl.toU32s (paddedBlock data i.castSucc.val)))
-        Impl.H256_256 := by
+        H0 := by
       apply fin_foldl_ext
       intro s i
       have := paddedBlock_complete data i.val i.isLt
@@ -129,12 +130,12 @@ theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61
         (fun (state : Impl.State) (i : Fin (data.size / 64)) =>
           Impl.compress state (Impl.toU32s
             (Vector.ofFn fun j : Fin 64 => data.get! (i.val * 64 + j.val))))
-        Impl.H256_256
+        H0
         =
       Fin.foldl (data.size / 64)
         (fun (s : Impl.State) (i : Fin (data.size / 64)) =>
           Impl.compress s (Impl.toU32s (paddedBlock data i.castSucc.castSucc.val)))
-        Impl.H256_256 := by
+        H0 := by
       apply fin_foldl_ext
       intro s i
       have := paddedBlock_complete data i.val i.isLt
@@ -161,5 +162,44 @@ theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61
       · simp [hi56]
       · simp [hi56]
     rw [hFoldEq, hBlockA, hBlockB]
+
+/-- `Impl.sha256` agrees with the cleaner block-list refactoring.
+The `data.size < 2 ^ 61` hypothesis discharges the runtime size guard
+at the top of `Impl.sha256` (see FIPS 180-4 §5.1.1). -/
+theorem impl_sha256_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61) :
+    Impl.sha256 data = implSha256Refactored data := by
+  unfold Impl.sha256
+  rw [if_neg (Nat.not_le.mpr hsize)]
+  show extractDigest (Impl.sha256State data Impl.H256_256) = _
+  rw [impl_sha256State_eq_refactored]
+  rfl
+
+/-! ## SHA-224
+
+`Impl.sha224` shares the SHA-256 compression machinery (`Impl.sha256State`)
+but uses the SHA-224 IV `H256_224` and truncates the digest emission to
+its left-most 28 bytes.  Its refactor sits on top of
+`impl_sha256State_eq_refactored` at the `H256_224` IV. -/
+
+/-- Block-list re-statement of `Impl.sha224`: the SHA-256-shape fold
+from the SHA-224 IV, then 28-byte digest emission. -/
+def implSha224Refactored (data : ByteArray) : Vector UInt8 28 :=
+  extractDigest224 (implSha256StateRefactored data Impl.H256_224)
+
+theorem implSha224Refactored_eq_extractDigest224 (data : ByteArray) :
+    implSha224Refactored data =
+      extractDigest224 ((implPaddedBlocks data).foldl
+        (fun s b => Impl.compress s (Impl.toU32s b)) Impl.H256_224) := rfl
+
+/-- `Impl.sha224` agrees with the block-list refactoring.  Same proof
+shape as `impl_sha256_eq_refactored`: unfold + size-guard + the shared
+IV-generic `impl_sha256State_eq_refactored`. -/
+theorem impl_sha224_eq_refactored (data : ByteArray) (hsize : data.size < 2 ^ 61) :
+    Impl.sha224 data = implSha224Refactored data := by
+  unfold Impl.sha224
+  rw [if_neg (Nat.not_le.mpr hsize)]
+  show extractDigest224 (Impl.sha256State data Impl.H256_224) = _
+  rw [impl_sha256State_eq_refactored]
+  rfl
 
 end SHS.Equiv.SHA256.Padding.Equiv

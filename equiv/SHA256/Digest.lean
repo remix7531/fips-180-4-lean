@@ -168,4 +168,88 @@ theorem digestBitVec_extract (state : Impl.State) :
        by rw [BitVec.setWidth_eq]]
   simp only [BitVec.setWidth_append_eq_shiftLeft_setWidth_or, BitVec.shiftLeft_or_distrib]
 
+/-! ## SHA-224 digest emission
+
+Parallel `Word.fromBits ∘ byteToBits` story at width 224, consumed by
+`Sha224.lean`'s top-level rewrite chain.  Same structure as the 256-bit
+case: a per-word `fromBits_4bytes_BE_224` plus a 7-chunk split. -/
+
+/-- 224-bit specialisation: same one-line corollary as `_256`. -/
+private theorem fromBits_4bytes_BE_224 (w : UInt32) :
+    SHS.Word.fromBits (n := 224)
+      (((List.range 4).map fun b =>
+        ((w >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8).flatMap byteToBits)
+    = (w.toBitVec).zeroExtend 224 :=
+  fromBits_4bytes_BE_ge32 (by decide) w
+
+/-- 28-byte BE digest viewed as a 224-bit MSB-first big-endian `BitVec`. -/
+def digestBitVec224 (d : Vector UInt8 28) : BitVec 224 :=
+  SHS.Word.fromBits (n := 224)
+    (d.toList.flatMap fun b => byteToBits b)
+
+/-- SHA-224 digest extractor: same big-endian per-word byte layout as
+`extractDigest`, restricted to the first seven words. -/
+def extractDigest224 (state : Impl.State) : Vector UInt8 28 :=
+  Vector.ofFn fun i : Fin 28 =>
+    let wordIdx : Fin 8 := ⟨i.val / 4, by omega⟩
+    let byteIdx := i.val % 4
+    ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
+
+set_option linter.style.longLine false in
+/-- The 28-byte BE digest list, restated as 7 four-byte chunks (parallel
+to `digest_list_eq_8chunks`, truncated to seven words). -/
+private theorem digest224_list_eq_7chunks (state : Impl.State) :
+    (Vector.ofFn (n := 28) fun i : Fin 28 =>
+        let wordIdx : Fin 8 := ⟨i.val / 4, by omega⟩
+        let byteIdx := i.val % 4
+        ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8).toList =
+      (((List.range 4).map fun b => ((state[(0 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(1 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(2 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(3 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(4 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(5 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8) ++
+       ((List.range 4).map fun b => ((state[(6 : Fin 8)] >>> (UInt32.ofNat ((3 - b) * 8))) &&& 0xff).toUInt8)) := by
+  simp only [Vector.toList_ofFn, List.range, List.range.loop, List.map_cons, List.map_nil,
+    List.cons_append, List.nil_append]
+  rfl
+
+/-- SHA-224 byte-extraction emission matches the spec's truncated
+`H[0]! ++ … ++ H[6]!`.  Parallel to `digestBitVec_extract` with seven
+four-byte chunks instead of eight. -/
+theorem digestBitVec224_extract (state : Impl.State) :
+    digestBitVec224 (extractDigest224 state) =
+      let H := toSpecState state
+      H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]! := by
+  unfold digestBitVec224 extractDigest224
+  rw [digest224_list_eq_7chunks]
+  simp only [List.flatMap_append]
+  rw [fromBits_append_same_width, fromBits_append_same_width, fromBits_append_same_width,
+      fromBits_append_same_width, fromBits_append_same_width, fromBits_append_same_width]
+  rw [fromBits_4bytes_BE_224, fromBits_4bytes_BE_224, fromBits_4bytes_BE_224,
+      fromBits_4bytes_BE_224, fromBits_4bytes_BE_224, fromBits_4bytes_BE_224,
+      fromBits_4bytes_BE_224]
+  simp only [flatMap_byteToBits_length, List.length_map, List.length_range,
+    show (8 : Nat) * 4 = 32 from rfl]
+  simp only [show (0 : Nat) = (0 : Fin 8).val from rfl,
+             show (1 : Nat) = (1 : Fin 8).val from rfl,
+             show (2 : Nat) = (2 : Fin 8).val from rfl,
+             show (3 : Nat) = (3 : Fin 8).val from rfl,
+             show (4 : Nat) = (4 : Fin 8).val from rfl,
+             show (5 : Nat) = (5 : Fin 8).val from rfl,
+             show (6 : Nat) = (6 : Fin 8).val from rfl,
+             getElem!_toSpecState]
+  generalize state[(0 : Fin 8)].toBitVec = w0
+  generalize state[(1 : Fin 8)].toBitVec = w1
+  generalize state[(2 : Fin 8)].toBitVec = w2
+  generalize state[(3 : Fin 8)].toBitVec = w3
+  generalize state[(4 : Fin 8)].toBitVec = w4
+  generalize state[(5 : Fin 8)].toBitVec = w5
+  generalize state[(6 : Fin 8)].toBitVec = w6
+  rw [show (w0 ++ w1 ++ w2 ++ w3 ++ w4 ++ w5 ++ w6
+            : BitVec (32+32+32+32+32+32+32))
+       = (w0 ++ w1 ++ w2 ++ w3 ++ w4 ++ w5 ++ w6).setWidth 224 from
+       by rw [BitVec.setWidth_eq]]
+  simp only [BitVec.setWidth_append_eq_shiftLeft_setWidth_or, BitVec.shiftLeft_or_distrib]
+
 end SHS.Equiv.SHA256.Digest

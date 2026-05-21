@@ -56,6 +56,15 @@ def implSha256Hash (bytes : ByteArray) (len : Nat) : Option String :=
     let bs := bytes.extract 0 (len / 8)
     some (byteArrayToHex (vectorToByteArray (SHS.SHA256.Impl.sha256 bs)))
 
+/-- Impl SHA-224 hash adapter: byte-aligned only.  SHA-224 shares the
+SHA-256 compression machinery, so this validates `Impl.sha224` against
+the same CAVP harness used for SHA-256. -/
+def implSha224Hash (bytes : ByteArray) (len : Nat) : Option String :=
+  if len % 8 ≠ 0 then none
+  else
+    let bs := bytes.extract 0 (len / 8)
+    some (byteArrayToHex (vectorToByteArray (SHS.SHA256.Impl.sha224 bs)))
+
 /-- Spec MCT step: hash bytes through `computeHash`, decode the hex back to
 bytes for the next round.  Returns `none` on unknown algorithm or hex
 round-trip failure. -/
@@ -66,6 +75,10 @@ def specHashBytes (alg : String) (bytes : ByteArray) : Option ByteArray := do
 /-- Impl SHA-256 MCT step: direct ByteArray → ByteArray. -/
 def implSha256HashBytes (bytes : ByteArray) : Option ByteArray :=
   some (vectorToByteArray (SHS.SHA256.Impl.sha256 bytes))
+
+/-- Impl SHA-224 MCT step: direct ByteArray → ByteArray. -/
+def implSha224HashBytes (bytes : ByteArray) : Option ByteArray :=
+  some (vectorToByteArray (SHS.SHA256.Impl.sha224 bytes))
 
 /-! ## Short/long-message vector runner -/
 
@@ -248,5 +261,9 @@ def specMonteCases (dir : String) : List (String × String) :=
 /-- Impl-side short/long-message vector files (SHA-256 only). -/
 def implCases (dir : String) : List String :=
   [s!"{dir}/SHA256ShortMsg.rsp", s!"{dir}/SHA256LongMsg.rsp"]
+
+/-- Impl-side short/long-message vector files for SHA-224. -/
+def implCases224 (dir : String) : List String :=
+  [s!"{dir}/SHA224ShortMsg.rsp", s!"{dir}/SHA224LongMsg.rsp"]
 
 end tests.CAVP

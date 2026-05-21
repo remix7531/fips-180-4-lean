@@ -106,4 +106,29 @@ theorem SHA256_sha256_eq_concat (M : SHS.Message) (h : M.length < 2 ^ 64) :
         SHS.SHA256.compress SHS.SHA256.H0_256
       H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]! ++ H[7]! := rfl
 
+/-! ## SHA-224 fold-lift and spec-side unfolding
+
+Parallel to the SHA-256 helpers above but at the SHA-224 IV: same
+generic `foldl_compress_lift_gen` instantiated at `H256_224`, plus the
+spec-side `parse ∘ pad ∘ fold ∘ truncate-7` unfolding. -/
+
+/-- SHA-224 variant of `foldl_compress_lift`: same shape, IV `H256_224`
+lifts to `H0_224` via `toSpecState_H256_224`. -/
+theorem foldl_compress_lift_224 (data : ByteArray) :
+    toSpecState ((implPaddedBlocks data).foldl
+        (fun s b => Impl.compress s (Impl.toU32s b)) Impl.H256_224) =
+      ((implPaddedBlocks data).map (fun b => toSpecBlock (Impl.toU32s b))).foldl
+        SHS.SHA256.compress SHS.SHA256.H0_224 := by
+  rw [← toSpecState_H256_224]
+  exact foldl_compress_lift_gen _ _
+
+/-- Definitional unfolding of `SHS.SHA256.sha224` mirroring
+`SHA256_sha256_eq_concat`; the spec emits only seven of the eight
+hash words. -/
+theorem SHA256_sha224_eq_concat (M : SHS.Message) (h : M.length < 2 ^ 64) :
+    SHS.SHA256.sha224 M h =
+      let H := (SHS.SHA256.parse (SHS.SHA1.pad M)).foldl
+        SHS.SHA256.compress SHS.SHA256.H0_224
+      H[0]! ++ H[1]! ++ H[2]! ++ H[3]! ++ H[4]! ++ H[5]! ++ H[6]! := rfl
+
 end SHS.Equiv.SHA256.Pipeline

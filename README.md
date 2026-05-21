@@ -10,10 +10,12 @@ three layers:
   SHA-384, SHA-512, SHA-512/224, SHA-512/256).  All 1415 NIST CAVP
   vectors pass.  Rendered via [mdgen] + `pandoc`.
 * **`impl/`** — a performance-tuned executable SHA-256 implementation
-  (~170 MiB/s; ~2.4× slower than `sha256sum`).
+  (~170 MiB/s; ~2.4× slower than `sha256sum`), plus SHA-224 sharing the
+  same compression core (different IV + 28-byte truncation).
 * **`equiv/`** — machine-checked equivalence proofs between the impl
-  and the spec, with public theorems `compress_correct` and
-  `sha256_correct` pinned to a small classical-axiom trust base.
+  and the spec, with public theorems `compress_correct`,
+  `sha256_correct`, and `sha224_correct` pinned to a small
+  classical-axiom trust base.
 
 [site]: https://remix7531.com/fips-180-4-lean/
 [literate-programming]: https://en.wikipedia.org/wiki/Literate_programming
@@ -38,11 +40,13 @@ from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.
 
 ## Coverage and trust base
 
-The `impl/` implementation and `equiv/` proofs cover only SHA-256;
-the other algorithms are spec-only.
+The `impl/` implementation and `equiv/` proofs cover SHA-256 and
+SHA-224 (which share the same compression core); the other algorithms
+are spec-only.
 
 * `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with the spec's per-block compression function.
 * `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with `SHS.SHA256.sha256` for all `data` with `data.size < 2 ^ 61` (the FIPS 180-4 §5.1.1 bit-length cap).
+* `SHS.Equiv.SHA256.sha224_correct` — `Impl.sha224` agrees with `SHS.SHA256.sha224` under the same size bound.
 
 Both depend only on Lean core's classical axioms (`propext`, `Classical.choice`, `Quot.sound`); see `equiv/AxiomCheck.lean` for the pinned set, which fails the build if a new axiom is introduced.
 
