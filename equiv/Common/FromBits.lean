@@ -134,4 +134,51 @@ theorem fromBits_setWidth_eq {M N : Nat} (bits : List Bool)
   exact Nat.mod_eq_of_lt
     (lt_of_lt_of_le (natFromBits_lt bits) (Nat.pow_le_pow_right (by omega) hN))
 
+/-! ## `leftmost` lift
+
+`fromBits` packs bits MSB-first; the leftmost `N` bits of the wider
+packing are exactly `fromBits` of the first `N` bits of the list.
+Consumed by SHA-512/224 digest emission, where the spec's
+`.leftmost 224` of a 256-bit packing crosses a word boundary. -/
+
+private theorem natFromBits_split (l r : List Bool) :
+    natFromBits (l ++ r) = natFromBits l * 2 ^ r.length + natFromBits r := by
+  unfold natFromBits
+  rw [List.foldl_append, natFromBits_foldl_init]
+  rfl
+
+/-- `leftmost N` of `fromBits M bits` (with `bits.length = M`, `N ≤ M`)
+equals `fromBits N` of the first `N` bits.  The remaining bits become the
+low part (LSB side) of the BitVec and are discarded by `leftmost`. -/
+theorem fromBits_leftmost {M N : Nat} (bits : List Bool)
+    (hLen : bits.length = M) (hN : N ≤ M) :
+    (SHS.Word.fromBits (n := M) bits).leftmost N =
+      SHS.Word.fromBits (n := N) (bits.take N) := by
+  apply BitVec.eq_of_toNat_eq
+  -- LHS reduces to `(natFromBits bits) >>> (M - N) % 2 ^ N`.
+  rw [BitVec.leftmost, BitVec.extractLsb'_toNat,
+      fromBits_toNat_of_length_le bits (by rw [hLen])]
+  -- RHS to `natFromBits (bits.take N)`.
+  have hTake_len : (bits.take N).length ≤ N := by
+    rw [List.length_take]; omega
+  rw [fromBits_toNat_of_length_le _ hTake_len]
+  -- Split bits = take N ++ drop N, apply natFromBits_split, simplify shifts.
+  have hSplit : bits = bits.take N ++ bits.drop N := (List.take_append_drop N bits).symm
+  conv_lhs => rw [hSplit, natFromBits_split]
+  have hDropLen : (bits.drop N).length = M - N := by
+    rw [List.length_drop, hLen]
+  rw [hDropLen]
+  have hDropLt : natFromBits (bits.drop N) < 2 ^ (M - N) := by
+    have := natFromBits_lt (bits.drop N)
+    rwa [hDropLen] at this
+  rw [Nat.shiftRight_eq_div_pow]
+  have hAdd : (natFromBits (bits.take N) * 2 ^ (M - N) + natFromBits (bits.drop N))
+      / 2 ^ (M - N) = natFromBits (bits.take N) := by
+    rw [Nat.add_comm, Nat.add_mul_div_right _ _ (by positivity : 0 < 2 ^ (M - N))]
+    rw [Nat.div_eq_of_lt hDropLt]
+    ring
+  rw [hAdd]
+  apply Nat.mod_eq_of_lt
+  exact lt_of_lt_of_le (natFromBits_lt _) (Nat.pow_le_pow_right (by omega) hTake_len)
+
 end SHS.Equiv.FromBits
