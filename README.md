@@ -11,11 +11,13 @@ three layers:
   vectors pass.  Rendered via [mdgen] + `pandoc`.
 * **`impl/`** — a performance-tuned executable SHA-256 implementation
   (~170 MiB/s; ~2.4× slower than `sha256sum`), plus SHA-224 sharing the
-  same compression core (different IV + 28-byte truncation).
+  same compression core, and a parallel SHA-512 family (SHA-512,
+  SHA-384, SHA-512/224, SHA-512/256) sharing one 80-round 64-bit
+  compression core.
 * **`equiv/`** — machine-checked equivalence proofs between the impl
-  and the spec, with public theorems `compress_correct`,
-  `sha256_correct`, and `sha224_correct` pinned to a small
-  classical-axiom trust base.
+  and the spec for the SHA-2 family (SHA-256, SHA-224, SHA-512,
+  SHA-384, SHA-512/256, SHA-512/224), pinned to a small classical-axiom
+  trust base.
 
 [site]: https://remix7531.com/fips-180-4-lean/
 [literate-programming]: https://en.wikipedia.org/wiki/Literate_programming
@@ -40,15 +42,23 @@ from 8 MiB up; `sha256sum` saturates at ~410 MiB/s.
 
 ## Coverage and trust base
 
-The `impl/` implementation and `equiv/` proofs cover SHA-256 and
-SHA-224 (which share the same compression core); the other algorithms
-are spec-only.
+The `impl/` implementation and `equiv/` proofs cover the entire SHA-2
+family: SHA-256 / SHA-224 (32-bit, 64-round shared core) and SHA-512 /
+SHA-384 / SHA-512/256 / SHA-512/224 (64-bit, 80-round shared core).
+SHA-1 is spec-only.
 
-* `SHS.Equiv.SHA256.compress_correct` — `Impl.compress` agrees with the spec's per-block compression function.
-* `SHS.Equiv.SHA256.sha256_correct` — `Impl.sha256` agrees with `SHS.SHA256.sha256` for all `data` with `data.size < 2 ^ 61` (the FIPS 180-4 §5.1.1 bit-length cap).
-* `SHS.Equiv.SHA256.sha224_correct` — `Impl.sha224` agrees with `SHS.SHA256.sha224` under the same size bound.
+* `SHS.Equiv.SHA256.{compress_correct, sha256_correct, sha224_correct}`
+  — per-block + top-level equivalences for the SHA-256 family
+  (`data.size < 2 ^ 61`, FIPS 180-4 §5.1.1 bit-length cap).
+* `SHS.Equiv.SHA512.{compress_correct, sha512_correct, sha384_correct,
+  sha512_256_correct, sha512_224_correct}` — same shape for the
+  SHA-512 family (same size bound; FIPS 180-4 §5.1.2 allows a wider
+  range but the impl encodes bit length via `UInt64`).
 
-Both depend only on Lean core's classical axioms (`propext`, `Classical.choice`, `Quot.sound`); see `equiv/AxiomCheck.lean` for the pinned set, which fails the build if a new axiom is introduced.
+All eight theorems depend only on Lean core's classical axioms
+(`propext`, `Classical.choice`, `Quot.sound`); see
+`equiv/AxiomCheck.lean` for the pinned set, which fails the build if a
+new axiom is introduced.
 
 The proofs equate the **Lean source** of impl and spec; they do not
 cover bugs in the Lean compiler, C toolchain, or runtime.
