@@ -101,6 +101,5 @@ theorem toU64sFromBytes_eq_toU64s (data : ByteArray) (off : Nat) :
   intro i hi
   simp only [Impl.toU64sFromBytes, Impl.toU64s, Impl.beU64FromBytes, Impl.beU64,
     Vector.getElem_ofFn, ← Nat.add_assoc]
-  interval_cases i <;> rfl
 
 end SHS.Equiv.SHA512.ToU64s

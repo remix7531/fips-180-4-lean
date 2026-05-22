@@ -1,28 +1,42 @@
-import impl.Unroll
-
 /-!
-# SHA-512 — performance-tuned implementation
+# SHA-512 family — performance-tuned implementation
 
-Pure-Lean SHA-512 organized for both auditability (a paper trail to
-FIPS 180-4 §6.4) and runtime efficiency.  Mirrors `impl/SHA256.lean`
-at 64-bit width: 128-byte blocks, 80-round compression, eight 64-bit
-working variables.
+Pure-Lean SHA-512 (and SHA-384, SHA-512/256, SHA-512/224) with a
+paper trail to FIPS 180-4 §6.4–6.7.  Mirrors `impl/SHA256.lean` at
+64-bit width: 128-byte blocks, 80-round compression, eight 64-bit
+working variables.  All four hashes share `compress` / `sha512State`;
+they differ only in IV (`H0_*`) and final-digest truncation.
 
 ## Public API
 
 * `compress : State → Block → State` — single-block compression (§6.4).
-* `sha512 : ByteArray → Vector UInt8 64` — full streaming hash.
+* `sha512 / sha384 / sha512_256 / sha512_224 : ByteArray → Vector UInt8 N`
+  — full streaming hashes (§6.4–6.7).
 
-Plus the data-shape surfaces used by `equiv/`:
-`H0_512`, `K64`, `beU64` / `toU64s`, `beU64FromBytes` / `toU64sFromBytes`.
+Plus the data-shape surfaces used by `equiv/`: `H0_512` (and family
+IVs `H0_384`, `H0_512_256`, `H0_512_224`), `K64`, `beU64` / `toU64s`,
+`beU64FromBytes` / `toU64sFromBytes`.
 
 ## 128-bit length suffix without UInt128
 
-Lean codegen has no primitive 128-bit integer.  FIPS 180-4 §5.1.2's
+Lean codegen has no primitive 128-bit integer, so FIPS 180-4 §5.1.2's
 16-byte length tag is emitted as eight literal zero bytes followed by
 the existing 8-byte big-endian `UInt64` length encoding.  The
 `< 2 ^ 61` byte-size guard ensures `8 * data.size < 2 ^ 64`, so the
 high half is unconditionally zero. -/
+
+-- Bounds discharge for `Vector` accessors used inside the `for h : i in [a:b] do`
+-- ranges below.  Range membership (`Std.Legacy.Range`) carries `.lower` / `.upper`
+-- accessors pinning `start ≤ i < stop`; extract them and let `grind` close the
+-- resulting arithmetic goal (e.g. `i < 80`, `i - 16 < 80`).
+local macro_rules
+  | `(tactic| get_elem_tactic) =>
+    `(tactic|
+        first
+        | grind
+        | (first
+              | (have := ‹_ ∈ _›.upper; have := ‹_ ∈ _›.lower; grind)
+              | (have := ‹_ ∈ _›.upper; grind)))
 
 namespace SHS.SHA512.Impl
 
@@ -40,13 +54,13 @@ def H0_384 : Vector UInt64 8 :=
 
 /-- Initial hash value for SHA-512/256 (FIPS 180-4 §5.3.6.2, precomputed). -/
 def H0_512_256 : Vector UInt64 8 :=
-  ⟨#[0x22312194FC2BF72C, 0x9F555FA3C84C64C2, 0x2393B86B6F53B151, 0x963877195940EABD,
-     0x96283EE2A88EFFE3, 0xBE5E1E2553863992, 0x2B0199FC2C85B8AA, 0x0EB72DDC81C52CA2], rfl⟩
+  ⟨#[0x22312194fc2bf72c, 0x9f555fa3c84c64c2, 0x2393b86b6f53b151, 0x963877195940eabd,
+     0x96283ee2a88effe3, 0xbe5e1e2553863992, 0x2b0199fc2c85b8aa, 0x0eb72ddc81c52ca2], rfl⟩
 
 /-- Initial hash value for SHA-512/224 (FIPS 180-4 §5.3.6.1, precomputed). -/
 def H0_512_224 : Vector UInt64 8 :=
-  ⟨#[0x8C3D37C819544DA2, 0x73E1996689DCD4D6, 0x1DFAB7AE32FF9C82, 0x679DD514582F9FCF,
-     0x0F6D2B697BD44DA8, 0x77E36F7304C48942, 0x3F9D85A86A1D36C8, 0x1112E6AD91D692A1], rfl⟩
+  ⟨#[0x8c3d37c819544da2, 0x73e1996689dcd4d6, 0x1dfab7ae32ff9c82, 0x679dd514582f9fcf,
+     0x0f6d2b697bd44da8, 0x77e36f7304c48942, 0x3f9d85a86a1d36c8, 0x1112e6ad91d692a1], rfl⟩
 
 /-- Round constants for SHA-512 (FIPS 180-4 §4.2.3). -/
 def K64 : Vector UInt64 80 :=
@@ -112,23 +126,8 @@ abbrev State := Vector UInt64 8
 /-- Sixteen 64-bit words of one message block — `Vector UInt64 16`. -/
 abbrev Block := Vector UInt64 16
 
-/-- Combined per-round state: schedule + eight working variables. -/
-structure RoundState where
-  schedule : Block
-  a : UInt64
-  b : UInt64
-  c : UInt64
-  d : UInt64
-  e : UInt64
-  f : UInt64
-  g : UInt64
-  h : UInt64
-deriving Inhabited
-
-@[inline] def RoundState.ofState (s : State) (block : Block) : RoundState :=
-  { schedule := block
-    a := s[0], b := s[1], c := s[2], d := s[3]
-    e := s[4], f := s[5], g := s[6], h := s[7] }
+/-- 80-word expanded message schedule (FIPS 180-4 §6.4.2 step 1). -/
+abbrev Schedule := Vector UInt64 80
 
 /-! ## §5.2.2  Byte-level decode -/
 
@@ -164,68 +163,66 @@ deriving Inhabited
 
 /-- Sixteen BE `UInt64`s from `data` at `Nat` offset `off`. -/
 @[inline] def toU64sFromBytes (data : ByteArray) (off : Nat) : Block :=
-  #v[ beU64FromBytes data off ⟨ 0, by decide⟩,
-      beU64FromBytes data off ⟨ 1, by decide⟩,
-      beU64FromBytes data off ⟨ 2, by decide⟩,
-      beU64FromBytes data off ⟨ 3, by decide⟩,
-      beU64FromBytes data off ⟨ 4, by decide⟩,
-      beU64FromBytes data off ⟨ 5, by decide⟩,
-      beU64FromBytes data off ⟨ 6, by decide⟩,
-      beU64FromBytes data off ⟨ 7, by decide⟩,
-      beU64FromBytes data off ⟨ 8, by decide⟩,
-      beU64FromBytes data off ⟨ 9, by decide⟩,
-      beU64FromBytes data off ⟨10, by decide⟩,
-      beU64FromBytes data off ⟨11, by decide⟩,
-      beU64FromBytes data off ⟨12, by decide⟩,
-      beU64FromBytes data off ⟨13, by decide⟩,
-      beU64FromBytes data off ⟨14, by decide⟩,
-      beU64FromBytes data off ⟨15, by decide⟩ ]
+  Vector.ofFn (fun i => beU64FromBytes data off i)
 
 /-! ## §6.4  Compression -/
 
-/-- One round of compression: schedule extension (or read for `i < 16`)
-followed by the working-variable mix.  Same shape as SHA-256's
-`roundStep` but at 64-bit width and with SHA-512's rotation constants. -/
-@[inline] def roundStep (rs : RoundState) (i : Fin 80) : RoundState :=
-  let block := rs.schedule
-  let (block', w) :=
-    if hi : i.val < 16 then
-      (block, block[i.val]'hi)
-    else
-      let w15 := block[(i.val - 15) % 16]'(by omega)
-      let s0  := (UInt64.rotr w15 1) ^^^ (UInt64.rotr w15 8) ^^^ (w15 >>> 7)
-      let w2  := block[(i.val - 2) % 16]'(by omega)
-      let s1  := (UInt64.rotr w2 19) ^^^ (UInt64.rotr w2 61) ^^^ (w2 >>> 6)
-      let w16 := block[(i.val - 16) % 16]'(by omega)
-      let w7  := block[(i.val - 7) % 16]'(by omega)
-      let new := w16 + s0 + w7 + s1
-      (block.set ((i.val) % 16) new (by omega), new)
-  let s1 := (UInt64.rotr rs.e 14) ^^^ (UInt64.rotr rs.e 18) ^^^ (UInt64.rotr rs.e 41)
-  let ch := (rs.e &&& rs.f) ^^^ ((~~~ rs.e) &&& rs.g)
-  let t1 := s1 + ch + K64[i] + w + rs.h
-  let s0 := (UInt64.rotr rs.a 28) ^^^ (UInt64.rotr rs.a 34) ^^^ (UInt64.rotr rs.a 39)
-  let mj := (rs.a &&& rs.b) ^^^ (rs.a &&& rs.c) ^^^ (rs.b &&& rs.c)
-  let t2 := s0 + mj
-  { schedule := block'
-    a := t1 + t2, b := rs.a, c := rs.b, d := rs.c
-    e := rs.d + t1, f := rs.e, g := rs.f, h := rs.g }
+/-- FIPS 180-4 §6.4.2 step 1: 80-word message schedule.  First 16 slots
+copy the block; slots 16..79 satisfy
+`W[i] = W[i-16] + σ₀(W[i-15]) + W[i-7] + σ₁(W[i-2])`. -/
+def messageSchedule (block : Block) : Schedule := Id.run do
+  let mut w : Schedule := Vector.replicate 80 0
+  for h : i in [0:16] do
+    w := w.set i block[i]
+  for h : i in [16:80] do
+    let w15 := w[i - 15]
+    let s0  := (UInt64.rotr w15 1) ^^^ (UInt64.rotr w15 8) ^^^ (w15 >>> 7)
+    let w2  := w[i - 2]
+    let s1  := (UInt64.rotr w2 19) ^^^ (UInt64.rotr w2 61) ^^^ (w2 >>> 6)
+    w := w.set i (w[i - 16] + s0 + w[i - 7] + s1)
+  pure w
 
-/-- 80-round compression function via `unroll80`. -/
-def compress (state : State) (block : Block) : State :=
-  let init  : RoundState := RoundState.ofState state block
-  let final : RoundState := SHS.Impl.Unroll.unroll80 roundStep init
-  #v[ state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
-      state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h ]
+/-- FIPS 180-4 §6.4.2 steps 2–4: 80-round block compression. -/
+def compress (state : State) (block : Block) : State := Id.run do
+  let w := messageSchedule block
+  let mut a := state[0]
+  let mut b := state[1]
+  let mut c := state[2]
+  let mut d := state[3]
+  let mut e := state[4]
+  let mut f := state[5]
+  let mut g := state[6]
+  let mut h := state[7]
+  for h : i in [0:80] do
+    let s1 := (UInt64.rotr e 14) ^^^ (UInt64.rotr e 18) ^^^ (UInt64.rotr e 41)
+    let ch := (e &&& f) ^^^ ((~~~ e) &&& g)
+    let t1 := s1 + ch + K64[i] + w[i] + h
+    let s0 := (UInt64.rotr a 28) ^^^ (UInt64.rotr a 34) ^^^ (UInt64.rotr a 39)
+    let mj := (a &&& b) ^^^ (a &&& c) ^^^ (b &&& c)
+    let t2 := s0 + mj
+    h := g
+    g := f
+    f := e
+    e := d + t1
+    d := c
+    c := b
+    b := a
+    a := t1 + t2
+  pure #v[ state[0] + a, state[1] + b, state[2] + c, state[3] + d,
+           state[4] + e, state[5] + f, state[6] + g, state[7] + h ]
 
-/-! ## §6.4  Top-level `sha512`
+/-! ## §6.4–6.7  Top-level digests
 
-`sha512State` is the IV-parameterised core (shared by SHA-512, SHA-384,
-SHA-512/224, SHA-512/256).  Final-block split at `% 128 < 112` mirrors
-SHA-256's `% 64 < 56` at the doubled block size.  The 16-byte length
-suffix is eight literal zero bytes (high half, justified by the size
-guard) followed by the standard 8-byte BE `UInt64` length encoding. -/
+`sha512State` is the IV-parameterised core; the four public digests
+differ only in IV and in the `n ≤ 64`-byte left-most truncation
+`digestExtract` performs on the final state. -/
 
-/-- Post-size-check streaming-padded SHA-2-512 transform. -/
+/-- Post-size-check streaming-padded SHA-2-512 transform.  Compresses
+the `blocks` full 128-byte chunks, then the FIPS 180-4 §5.1.2 padded
+final block(s): when `remaining ≥ 112` the partial trailing block has
+no room for the 16-byte length tag, so it is flushed and a fresh zero
+block carries the tag.  Bytes `120..127` hold the BE `UInt64` bit length;
+bytes `112..119` are the literal-zero high half (see file docstring). -/
 @[inline] def sha512State (data : ByteArray) (H0 : State) : State :=
   let blocks    := data.size / 128
   let remaining := data.size % 128
@@ -241,14 +238,23 @@ guard) followed by the standard 8-byte BE `UInt64` length encoding. -/
     else
       (compress state (toU64s finalBlockA),
        Vector.ofFn (fun _ : Fin 128 => (0 : UInt8)))
-  -- Final block: data + 0x80 + zeros in slots [0, 112), 16-byte length
-  -- in slots [112, 128) — high 8 bytes literally 0, low 8 bytes BE
-  -- `totalBits`.
   let finalBlockC : Vector UInt8 128 := Vector.ofFn fun i : Fin 128 =>
     if i.val < 112 then finalBlockB[i]
     else if i.val < 120 then 0
     else ((totalBits >>> (((127 - i.val) * 8).toUInt64)) &&& 0xff).toUInt8
   compress state (toU64s finalBlockC)
+
+/-- Left-most `n ≤ 64` bytes of the final state in BE word order — the
+common digest-emission body shared by the four public digests.
+
+`@[reducible]` so that `unfold` + `show (Vector.ofFn fun i : Fin n => _)`
+in `equiv/SHA512/Padding/Equiv.lean` fires by whnf-reduction. -/
+@[reducible, inline] def digestExtract {n : Nat} (state : State) (h : n ≤ 64) :
+    Vector UInt8 n :=
+  Vector.ofFn fun i : Fin n =>
+    let wordIdx : Fin 8 := ⟨i.val / 8, by omega⟩
+    let byteIdx := i.val % 8
+    ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
 
 /-- Streaming-padded SHA-512.
 
@@ -259,39 +265,24 @@ unreachable. -/
 def sha512 (data : ByteArray) : Vector UInt8 64 :=
   if 2 ^ 61 ≤ data.size then
     panic! s!"SHS.SHA512.Impl.sha512: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit"
-  else
-  let state := sha512State data H0_512
-  Vector.ofFn fun i : Fin 64 =>
-    let wordIdx : Fin 8 := ⟨i.val / 8, by omega⟩
-    let byteIdx := i.val % 8
-    ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
+              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+  else digestExtract (sha512State data H0_512) (by decide)
 
 /-- Streaming-padded SHA-384 (FIPS 180-4 §6.5).  Same compression core
 as SHA-512, different IV (`H0_384`), 48-byte left-most truncation. -/
 def sha384 (data : ByteArray) : Vector UInt8 48 :=
   if 2 ^ 61 ≤ data.size then
     panic! s!"SHS.SHA512.Impl.sha384: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit"
-  else
-  let state := sha512State data H0_384
-  Vector.ofFn fun i : Fin 48 =>
-    let wordIdx : Fin 8 := ⟨i.val / 8, by omega⟩
-    let byteIdx := i.val % 8
-    ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
+              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+  else digestExtract (sha512State data H0_384) (by decide)
 
 /-- Streaming-padded SHA-512/256 (FIPS 180-4 §6.7).  Different IV
 (`H0_512_256`), 32-byte left-most truncation (word boundary). -/
 def sha512_256 (data : ByteArray) : Vector UInt8 32 :=
   if 2 ^ 61 ≤ data.size then
     panic! s!"SHS.SHA512.Impl.sha512_256: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit"
-  else
-  let state := sha512State data H0_512_256
-  Vector.ofFn fun i : Fin 32 =>
-    let wordIdx : Fin 8 := ⟨i.val / 8, by omega⟩
-    let byteIdx := i.val % 8
-    ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
+              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+  else digestExtract (sha512State data H0_512_256) (by decide)
 
 /-- Streaming-padded SHA-512/224 (FIPS 180-4 §6.6).  Different IV
 (`H0_512_224`), 28-byte truncation (crosses a word boundary — the last
@@ -299,12 +290,7 @@ def sha512_256 (data : ByteArray) : Vector UInt8 32 :=
 def sha512_224 (data : ByteArray) : Vector UInt8 28 :=
   if 2 ^ 61 ≤ data.size then
     panic! s!"SHS.SHA512.Impl.sha512_224: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit"
-  else
-  let state := sha512State data H0_512_224
-  Vector.ofFn fun i : Fin 28 =>
-    let wordIdx : Fin 8 := ⟨i.val / 8, by omega⟩
-    let byteIdx := i.val % 8
-    ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
+              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+  else digestExtract (sha512State data H0_512_224) (by decide)
 
 end SHS.SHA512.Impl

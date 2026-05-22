@@ -3,7 +3,7 @@ import Batteries.Data.List.Lemmas
 /-!
 # Generic loop infrastructure for the spec ↔ implementation equivalence
 
-The SHA-256 spec is written in `do`-notation:
+The SHA-256 / SHA-512 specs are written in `do`-notation:
 ```
 Id.run do
   for t in [0:n] do
@@ -14,17 +14,28 @@ the generic plumbing that lets the equivalence proofs treat such loops
 as `Fin.foldl` instead, and that lets us fuse / split / transport folds
 as needed.
 
-## Contents
+## Contents (`SHS.Equiv.Loop`)
 
 * `forIn_id_eq_Fin_foldl` — convert `for t in [0:n]` ↦ `Fin.foldl n`.
 * `forIn_id_eq_Fin_foldl_offset` — same, for ranges `[a:b]` (with shift).
+* `forIn'_id_eq_forIn` — erase the membership-proof `'` from a `forIn'`
+  whose body is a plain function of the index.
+* `forIn'_id_eq_forIn_of_eq` — same, when the body uses the membership
+  proof internally but agrees pointwise with an external function.
 * `fin_foldl_split` — split a `[0:m]` fold whose body branches on `i < n`
   into two consecutive folds (`[0:n]` then `[n:m]`).
 * `fin_foldl_transport` — push a state-bijection `φ` through a fold,
   provided each step commutes with `φ`.
 
-These four lemmas are domain-agnostic; they live here (rather than under
-`equiv/SHA256/`) so other hash specs can reuse them.
+## Contents (`SHS.Equiv.VecBridge`)
+
+* `set_bang_eq_set` / `getElem_bang_eq_getElem` — in-bounds:
+  `Vector.set!` / `xs[i]!` reduce to `Vector.set` / `xs[i]'h`.
+* `set_bang_oob` / `getElem_bang_oob` — out-of-bounds:
+  `Vector.set!` is a no-op and `xs[i]!` returns the inhabited default.
+
+These lemmas are domain-agnostic; they live here (rather than under
+`equiv/SHA256/` or `equiv/SHA512/`) so each hash family can reuse them.
 -/
 
 namespace SHS.Equiv.Loop
@@ -90,6 +101,23 @@ theorem forIn'_id_eq_forIn {β : Type _} (a b : Nat) (init : β)
   congr 1
   exact List.foldl_attach (l := List.range' a [a:b].size) (f := fun b a => f a b) (b := init)
 
+/-- Variant of `forIn'_id_eq_forIn` for bodies whose effect uses the membership
+proof internally (e.g. bounds-checked `Vector.set t _ h` or `xs[t]'h`).  If the
+body `F t hm s` happens to agree pointwise with a membership-free `f t s`, the
+`forIn'` equals the corresponding plain `forIn`.
+
+Used by `messageSchedule_eq_foldl` to bridge the desugared loops (whose body
+uses `block[t]` / `w.set t _ _` with proofs from `t ∈ [a:b]`) to their
+`[]!`/`set!` counterparts in one step. -/
+theorem forIn'_id_eq_forIn_of_eq {β : Type _} (a b : Nat) (init : β)
+    (F : (t : Nat) → t ∈ [a:b] → β → β) (f : Nat → β → β)
+    (h : ∀ t hm s, F t hm s = f t s) :
+    Id.run (forIn' [a:b] init (fun t hm s => pure (ForInStep.yield (F t hm s)))) =
+      Id.run (forIn [a:b] init (fun t s => pure (ForInStep.yield (f t s)))) := by
+  rw [← forIn'_id_eq_forIn a b init f]
+  simp only [Id.run]; congr 1
+  funext t hm s; rw [h]
+
 /-! ## Splitting and transporting folds -/
 
 /-- Split a single `Fin.foldl m` whose body switches on `i < n` into two
@@ -150,23 +178,40 @@ theorem fin_foldl_transport {α β : Type _} (n : Nat)
 
 end SHS.Equiv.Loop
 
-/-! ## Vector `set!`/`set` and `getElem!`/`getElem` bridges (in-bounds)
+/-! ## Vector `set!`/`set` and `getElem!`/`getElem` bridges
 
 The spec uses bounds-checked `Vector.set` / `_[i]` (in-bounds via the
 `forIn'` membership proof); the equiv layer's `Nat`-indexed step
-functions use the panicking `Vector.set!` / `_[i]!`.  The two agree
-on in-bounds indices. -/
+functions use the panicking `Vector.set!` / `_[i]!`.  Bridge lemmas
+in both directions: in-bounds the two agree, out-of-bounds `set!` is
+a no-op and `_[i]!` returns the inhabited default. -/
 
 namespace SHS.Equiv.VecBridge
 
-@[simp] theorem set_bang_eq_set {α : Type _} {n : Nat} (xs : Vector α n) (i : Nat)
+/-! ### In-bounds bridges -/
+
+/-- In-bounds `Vector.set!` reduces to the bounds-checked `Vector.set`. -/
+theorem set_bang_eq_set {α : Type _} {n : Nat} (xs : Vector α n) (i : Nat)
     (h : i < n) (x : α) : xs.set! i x = xs.set i x := by
   apply Vector.toArray_inj.mp
   simp [Vector.toArray_set!, Vector.toArray_set, Array.set!_eq_setIfInBounds,
         Array.setIfInBounds, h]
 
+/-- In-bounds `xs[i]!` reduces to the bounds-checked `xs[i]`. -/
 theorem getElem_bang_eq_getElem {α : Type _} [Inhabited α] {n : Nat}
     (xs : Vector α n) (i : Nat) (h : i < n) : xs[i]! = xs[i] := by
   simp [getElem!_pos, h]
+
+/-! ### Out-of-bounds bridges -/
+
+/-- Out-of-bounds `Vector.set!` is a no-op. -/
+theorem set_bang_oob {α : Type _} {n : Nat} (xs : Vector α n) (i : Nat) (x : α)
+    (h : ¬ i < n) : xs.set! i x = xs :=
+  Vector.toArray_inj.mp <| by
+    simp [Vector.toArray_set!, Array.set!_eq_setIfInBounds, Array.setIfInBounds, h]
+
+/-- Out-of-bounds `xs[i]!` returns the inhabited default. -/
+theorem getElem_bang_oob {α : Type _} [Inhabited α] {n : Nat} (xs : Vector α n) (i : Nat)
+    (h : ¬ i < n) : xs[i]! = default := by simp [getElem!_neg, h]
 
 end SHS.Equiv.VecBridge
