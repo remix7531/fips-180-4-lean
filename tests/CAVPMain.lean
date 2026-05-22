@@ -36,11 +36,12 @@ def main (args : List String) : IO Unit := do
   let algFilter := argValue? args "--alg="
   let keep alg  := algFilter.all (· = alg)
   let dir       := "tests/vectors"
-  -- `--impl` runs an impl-only sweep but only SHA-256 and SHA-224 have
-  -- verified implementations (sharing the same compression core), so
-  -- the user must pin one of those algs to be explicit.
-  if args.contains "--impl" ∧ algFilter ≠ some "SHA256" ∧ algFilter ≠ some "SHA224" then
-    IO.eprintln "--impl requires --alg=SHA256 or --alg=SHA224 (no other impl is available yet)"
+  -- `--impl` runs an impl-only sweep.  SHA-1 is spec-only, so the user
+  -- must pin one of the six SHA-2 algorithms to be explicit.
+  if args.contains "--impl" ∧ algFilter ≠ some "SHA256" ∧ algFilter ≠ some "SHA224"
+      ∧ algFilter ≠ some "SHA512" ∧ algFilter ≠ some "SHA384"
+      ∧ algFilter ≠ some "SHA512_256" ∧ algFilter ≠ some "SHA512_224" then
+    IO.eprintln "--impl requires --alg=SHA{1,224,256,384,512,512_224,512_256}"
     IO.Process.exit 2
   let pass ← IO.mkRef (0 : Nat)
   let fail ← IO.mkRef (0 : Nat)
@@ -58,6 +59,18 @@ def main (args : List String) : IO Unit := do
   if runVectors ∧ runImpl ∧ keep "SHA224" then
     for path in implCases224 dir do
       report "impl SHA224" path (runFile "impl SHA224" path implSha224Hash sample)
+  if runVectors ∧ runImpl ∧ keep "SHA512" then
+    for path in implCases512 dir do
+      report "impl SHA512" path (runFile "impl SHA512" path implSha512Hash sample)
+  if runVectors ∧ runImpl ∧ keep "SHA384" then
+    for path in implCases384 dir do
+      report "impl SHA384" path (runFile "impl SHA384" path implSha384Hash sample)
+  if runVectors ∧ runImpl ∧ keep "SHA512_256" then
+    for path in implCases512_256 dir do
+      report "impl SHA512_256" path (runFile "impl SHA512_256" path implSha512_256Hash sample)
+  if runVectors ∧ runImpl ∧ keep "SHA512_224" then
+    for path in implCases512_224 dir do
+      report "impl SHA512_224" path (runFile "impl SHA512_224" path implSha512_224Hash sample)
   if runMonte then
     if runImpl ∧ keep "SHA256" then
       let path := s!"{dir}/SHA256Monte.rsp"
@@ -67,6 +80,22 @@ def main (args : List String) : IO Unit := do
       let path := s!"{dir}/SHA224Monte.rsp"
       report "impl SHA224 Monte" path
         (runFileMonte "impl SHA224" path implSha224HashBytes monteSample)
+    if runImpl ∧ keep "SHA512" then
+      let path := s!"{dir}/SHA512Monte.rsp"
+      report "impl SHA512 Monte" path
+        (runFileMonte "impl SHA512" path implSha512HashBytes monteSample)
+    if runImpl ∧ keep "SHA384" then
+      let path := s!"{dir}/SHA384Monte.rsp"
+      report "impl SHA384 Monte" path
+        (runFileMonte "impl SHA384" path implSha384HashBytes monteSample)
+    if runImpl ∧ keep "SHA512_256" then
+      let path := s!"{dir}/SHA512_256Monte.rsp"
+      report "impl SHA512_256 Monte" path
+        (runFileMonte "impl SHA512_256" path implSha512_256HashBytes monteSample)
+    if runImpl ∧ keep "SHA512_224" then
+      let path := s!"{dir}/SHA512_224Monte.rsp"
+      report "impl SHA512_224 Monte" path
+        (runFileMonte "impl SHA512_224" path implSha512_224HashBytes monteSample)
     if runSpec then
       for (alg, path) in specMonteCases dir do
         if keep alg then

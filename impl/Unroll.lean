@@ -97,4 +97,59 @@ theorem unroll64_eq_foldl {α : Type _} (f : α → Fin 64 → α) (init : α) :
   rw [← unrollN_eq_foldl 64 f init]
   rfl
 
+/-! ## 80-step unrolling (SHA-512 compression) -/
+
+/-- 80 explicit applications of `f` at literal `Fin 80` indices.  Same
+shape as `unroll64`; SHA-512's compression loop runs 80 rounds rather
+than 64. -/
+@[inline] def unroll80 {α : Type _} (f : α → Fin 80 → α) (init : α) : α :=
+  init
+  |> (f · ⟨ 0, by decide⟩) |> (f · ⟨ 1, by decide⟩)
+  |> (f · ⟨ 2, by decide⟩) |> (f · ⟨ 3, by decide⟩)
+  |> (f · ⟨ 4, by decide⟩) |> (f · ⟨ 5, by decide⟩)
+  |> (f · ⟨ 6, by decide⟩) |> (f · ⟨ 7, by decide⟩)
+  |> (f · ⟨ 8, by decide⟩) |> (f · ⟨ 9, by decide⟩)
+  |> (f · ⟨10, by decide⟩) |> (f · ⟨11, by decide⟩)
+  |> (f · ⟨12, by decide⟩) |> (f · ⟨13, by decide⟩)
+  |> (f · ⟨14, by decide⟩) |> (f · ⟨15, by decide⟩)
+  |> (f · ⟨16, by decide⟩) |> (f · ⟨17, by decide⟩)
+  |> (f · ⟨18, by decide⟩) |> (f · ⟨19, by decide⟩)
+  |> (f · ⟨20, by decide⟩) |> (f · ⟨21, by decide⟩)
+  |> (f · ⟨22, by decide⟩) |> (f · ⟨23, by decide⟩)
+  |> (f · ⟨24, by decide⟩) |> (f · ⟨25, by decide⟩)
+  |> (f · ⟨26, by decide⟩) |> (f · ⟨27, by decide⟩)
+  |> (f · ⟨28, by decide⟩) |> (f · ⟨29, by decide⟩)
+  |> (f · ⟨30, by decide⟩) |> (f · ⟨31, by decide⟩)
+  |> (f · ⟨32, by decide⟩) |> (f · ⟨33, by decide⟩)
+  |> (f · ⟨34, by decide⟩) |> (f · ⟨35, by decide⟩)
+  |> (f · ⟨36, by decide⟩) |> (f · ⟨37, by decide⟩)
+  |> (f · ⟨38, by decide⟩) |> (f · ⟨39, by decide⟩)
+  |> (f · ⟨40, by decide⟩) |> (f · ⟨41, by decide⟩)
+  |> (f · ⟨42, by decide⟩) |> (f · ⟨43, by decide⟩)
+  |> (f · ⟨44, by decide⟩) |> (f · ⟨45, by decide⟩)
+  |> (f · ⟨46, by decide⟩) |> (f · ⟨47, by decide⟩)
+  |> (f · ⟨48, by decide⟩) |> (f · ⟨49, by decide⟩)
+  |> (f · ⟨50, by decide⟩) |> (f · ⟨51, by decide⟩)
+  |> (f · ⟨52, by decide⟩) |> (f · ⟨53, by decide⟩)
+  |> (f · ⟨54, by decide⟩) |> (f · ⟨55, by decide⟩)
+  |> (f · ⟨56, by decide⟩) |> (f · ⟨57, by decide⟩)
+  |> (f · ⟨58, by decide⟩) |> (f · ⟨59, by decide⟩)
+  |> (f · ⟨60, by decide⟩) |> (f · ⟨61, by decide⟩)
+  |> (f · ⟨62, by decide⟩) |> (f · ⟨63, by decide⟩)
+  |> (f · ⟨64, by decide⟩) |> (f · ⟨65, by decide⟩)
+  |> (f · ⟨66, by decide⟩) |> (f · ⟨67, by decide⟩)
+  |> (f · ⟨68, by decide⟩) |> (f · ⟨69, by decide⟩)
+  |> (f · ⟨70, by decide⟩) |> (f · ⟨71, by decide⟩)
+  |> (f · ⟨72, by decide⟩) |> (f · ⟨73, by decide⟩)
+  |> (f · ⟨74, by decide⟩) |> (f · ⟨75, by decide⟩)
+  |> (f · ⟨76, by decide⟩) |> (f · ⟨77, by decide⟩)
+  |> (f · ⟨78, by decide⟩) |> (f · ⟨79, by decide⟩)
+
+/-- The 80-step unroll equals `Fin.foldl 80`.  Same proof as
+`unroll64_eq_foldl`: route through the generic `unrollN_eq_foldl`. -/
+theorem unroll80_eq_foldl {α : Type _} (f : α → Fin 80 → α) (init : α) :
+    unroll80 f init = Fin.foldl 80 f init := by
+  rw [← unrollN_eq_foldl 80 f init]
+  rfl
+
 end SHS.Impl.Unroll

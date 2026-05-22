@@ -1,6 +1,7 @@
 import tests.Parser
 import spec
 import impl.SHA256
+import impl.SHA512
 
 open RspParser SHS
 
@@ -79,6 +80,47 @@ def implSha256HashBytes (bytes : ByteArray) : Option ByteArray :=
 /-- Impl SHA-224 MCT step: direct ByteArray → ByteArray. -/
 def implSha224HashBytes (bytes : ByteArray) : Option ByteArray :=
   some (vectorToByteArray (SHS.SHA256.Impl.sha224 bytes))
+
+/-- Impl SHA-512 hash adapter: byte-aligned only. -/
+def implSha512Hash (bytes : ByteArray) (len : Nat) : Option String :=
+  if len % 8 ≠ 0 then none
+  else
+    let bs := bytes.extract 0 (len / 8)
+    some (byteArrayToHex (vectorToByteArray (SHS.SHA512.Impl.sha512 bs)))
+
+/-- Impl SHA-512 MCT step: direct ByteArray → ByteArray. -/
+def implSha512HashBytes (bytes : ByteArray) : Option ByteArray :=
+  some (vectorToByteArray (SHS.SHA512.Impl.sha512 bytes))
+
+/-- Impl SHA-384 hash adapter. -/
+def implSha384Hash (bytes : ByteArray) (len : Nat) : Option String :=
+  if len % 8 ≠ 0 then none
+  else
+    let bs := bytes.extract 0 (len / 8)
+    some (byteArrayToHex (vectorToByteArray (SHS.SHA512.Impl.sha384 bs)))
+
+def implSha384HashBytes (bytes : ByteArray) : Option ByteArray :=
+  some (vectorToByteArray (SHS.SHA512.Impl.sha384 bytes))
+
+/-- Impl SHA-512/256 hash adapter. -/
+def implSha512_256Hash (bytes : ByteArray) (len : Nat) : Option String :=
+  if len % 8 ≠ 0 then none
+  else
+    let bs := bytes.extract 0 (len / 8)
+    some (byteArrayToHex (vectorToByteArray (SHS.SHA512.Impl.sha512_256 bs)))
+
+def implSha512_256HashBytes (bytes : ByteArray) : Option ByteArray :=
+  some (vectorToByteArray (SHS.SHA512.Impl.sha512_256 bytes))
+
+/-- Impl SHA-512/224 hash adapter. -/
+def implSha512_224Hash (bytes : ByteArray) (len : Nat) : Option String :=
+  if len % 8 ≠ 0 then none
+  else
+    let bs := bytes.extract 0 (len / 8)
+    some (byteArrayToHex (vectorToByteArray (SHS.SHA512.Impl.sha512_224 bs)))
+
+def implSha512_224HashBytes (bytes : ByteArray) : Option ByteArray :=
+  some (vectorToByteArray (SHS.SHA512.Impl.sha512_224 bytes))
 
 /-! ## Short/long-message vector runner -/
 
@@ -258,12 +300,25 @@ def specCases (dir : String) : List (String × String) :=
 def specMonteCases (dir : String) : List (String × String) :=
   supportedAlgs.map fun alg => (alg, s!"{dir}/{alg}Monte.rsp")
 
-/-- Impl-side short/long-message vector files (SHA-256 only). -/
+/-- Impl-side short/long-message vector files for SHA-256. -/
 def implCases (dir : String) : List String :=
   [s!"{dir}/SHA256ShortMsg.rsp", s!"{dir}/SHA256LongMsg.rsp"]
 
 /-- Impl-side short/long-message vector files for SHA-224. -/
 def implCases224 (dir : String) : List String :=
   [s!"{dir}/SHA224ShortMsg.rsp", s!"{dir}/SHA224LongMsg.rsp"]
+
+/-- Impl-side short/long-message vector files for SHA-512. -/
+def implCases512 (dir : String) : List String :=
+  [s!"{dir}/SHA512ShortMsg.rsp", s!"{dir}/SHA512LongMsg.rsp"]
+
+def implCases384 (dir : String) : List String :=
+  [s!"{dir}/SHA384ShortMsg.rsp", s!"{dir}/SHA384LongMsg.rsp"]
+
+def implCases512_256 (dir : String) : List String :=
+  [s!"{dir}/SHA512_256ShortMsg.rsp", s!"{dir}/SHA512_256LongMsg.rsp"]
+
+def implCases512_224 (dir : String) : List String :=
+  [s!"{dir}/SHA512_224ShortMsg.rsp", s!"{dir}/SHA512_224LongMsg.rsp"]
 
 end tests.CAVP
