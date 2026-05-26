@@ -9,7 +9,15 @@ import equiv.Common.ArrayFold
 Parallel to `equiv/SHA256/Padding/Layout.lean` with 128-byte blocks
 and a 16-byte length tag (high 8 bytes literal zero, low 8 bytes
 big-endian `UInt64` bit-count).  The cutoff is `% 128 < 112` (128
-minus 1 separator minus 16 length suffix). -/
+minus 1 separator minus 16 length suffix).
+
+Reifies the streaming pad inside `Impl.sha512` as `implPaddedBytes`
+and its 128-byte block view `implPaddedBlocks`, then proves the
+byte-by-byte layout in three cases:
+- `complete`: a fully-data block (`k < data.size / 128`)
+- `final<112`: one extra block holding data, `0x80`, zeros, length tag
+- `final≥112`: two tail blocks — A holds data + `0x80` + zeros, B
+  holds zeros + length tag. -/
 
 open SHS.Equiv.ByteArray
 open SHS.Equiv.ArrayFold
@@ -50,7 +58,9 @@ def lengthBE128 (bits : UInt64) : ByteArray := Id.run do
     bs := bs.push ((bits >>> ((7 - i) * 8).toUInt64) &&& 0xff).toUInt8
   return bs
 
-/-- Reified streaming pad of `Impl.sha512`. -/
+/-- Reified streaming pad of `Impl.sha512`.  Mirrors the impl's logic
+without unfolding `sha512`: append `data`, then `0x80`, then enough zeros
+to land at 112 mod 128, then the 16-byte big-endian bit-length tag. -/
 def implPaddedBytes (data : ByteArray) : ByteArray :=
   let totalBits : UInt64 := data.size.toUInt64 <<< 3
   appendZeros (data.push 0x80) (zerosCount data) ++ lengthBE128 totalBits
@@ -171,6 +181,8 @@ theorem lengthBE128_get!_eq (bits : UInt64) (i : Nat) (h1 : 8 ≤ i) (h2 : i < 1
 
 /-! ## `implPaddedBlocks` block view -/
 
+/-- The `i`-th block of `implPaddedBlocks data` written directly via
+`padded.get!`. -/
 def paddedBlock (data : ByteArray) (i : Nat) : Vector UInt8 128 :=
   Vector.ofFn fun (j : Fin 128) => (implPaddedBytes data).get! (i * 128 + j.val)
 
@@ -183,6 +195,8 @@ theorem implPaddedBlocks_foldl {β : Type*} (data : ByteArray)
   rw [array_foldl_ofFn_eq_fin_foldl]
   rfl
 
+/-- Complete-block formula: for `k < data.size / 128`, the `k`-th
+padded block equals the impl's `Vector.ofFn fun j => data.get! (k*128+j)`. -/
 theorem paddedBlock_complete (data : ByteArray) (k : Nat) (h : k < data.size / 128) :
     paddedBlock data k =
       Vector.ofFn (fun j : Fin 128 => data.get! (k * 128 + j.val)) := by
@@ -196,6 +210,11 @@ theorem paddedBlock_complete (data : ByteArray) (k : Nat) (h : k < data.size / 1
     omega
   omega
 
+/-- Final block (case `remaining < 112`): one extra block holding data,
+`0x80`, zeros, and the 16-byte length tag (8 zero bytes + 8-byte BE
+length).  Specialisation of `get!_implPaddedBytes_eq` at block index
+`data.size / 128` and `remaining < 112` (so data, separator, zeros,
+and length tag all fit in one block). -/
 theorem paddedBlock_final_lt112 (data : ByteArray) (h : data.size % 128 < 112) :
     paddedBlock data (data.size / 128) =
       Vector.ofFn (fun i : Fin 128 =>
@@ -236,6 +255,10 @@ theorem paddedBlock_final_lt112 (data : ByteArray) (h : data.size % 128 < 112) :
       simp [hj112, hge_data, hne_sep, hge_zero, hidx,
         lengthBE128_get!_eq _ _ hk_ge8 hk, h127, hj120]
 
+/-- Final block A (case `remaining ≥ 112`): data bytes, then `0x80`,
+then zeros (no length tag — that's in block B).  Specialisation of
+`get!_implPaddedBytes_eq` at block index `data.size / 128` when there's
+no room for the 16-byte length suffix. -/
 theorem paddedBlock_finalA_ge112 (data : ByteArray) (h : ¬ data.size % 128 < 112) :
     paddedBlock data (data.size / 128) =
       Vector.ofFn (fun i : Fin 128 =>
@@ -259,6 +282,10 @@ theorem paddedBlock_finalA_ge112 (data : ByteArray) (h : ¬ data.size % 128 < 11
     have := j.isLt; omega
   simp [heq_data, heq_sep, hzero]
 
+/-- Final block B (case `remaining ≥ 112`): all zeros except the 16-byte
+length tag in bytes 112..127.  Specialisation of `get!_implPaddedBytes_eq`
+at block index `data.size / 128 + 1`, which lies entirely past the
+zero-pad cutoff. -/
 theorem paddedBlock_finalB_ge112 (data : ByteArray) (h : ¬ data.size % 128 < 112) :
     paddedBlock data (data.size / 128 + 1) =
       Vector.ofFn (fun i : Fin 128 =>
@@ -276,12 +303,17 @@ theorem paddedBlock_finalB_ge112 (data : ByteArray) (h : ¬ data.size % 128 < 11
   rw [get!_implPaddedBytes_eq _ _ hjvalid, zerosCount_ge112 _ h]
   have hge_data : ¬ (data.size / 128 + 1) * 128 + j.val < data.size := by omega
   have hne_sep : ¬ (data.size / 128 + 1) * 128 + j.val = data.size := by omega
+  -- `paddedBlock` index `i = data.size / 128 + 1` is the freshly-allocated
+  -- zero block carrying the 16-byte length tag.  `hj112` (whether `j` lies
+  -- in the zero region or the length region) splits the cases but isn't
+  -- needed as a `simp` arg because `hzero` / `hge_zero` already discharge
+  -- the relevant branch in `get!_implPaddedBytes_eq`.
   by_cases hj112 : j.val < 112
   · have hzero : (data.size / 128 + 1) * 128 + j.val
         < data.size + 1 + (128 + 111 - data.size % 128) := by
       omega
     have hj120 : j.val < 120 := by omega
-    simp [hj112, hge_data, hne_sep, hzero, hj120]
+    simp [hge_data, hne_sep, hzero, hj120]
   · have hge_zero : ¬ (data.size / 128 + 1) * 128 + j.val
         < data.size + 1 + (128 + 111 - data.size % 128) := by
       omega
@@ -291,10 +323,10 @@ theorem paddedBlock_finalB_ge112 (data : ByteArray) (h : ¬ data.size % 128 < 11
     have hk : j.val - 112 < 16 := by omega
     by_cases hj120 : j.val < 120
     · have hk8 : j.val - 112 < 8 := by omega
-      simp [hj112, hge_data, hne_sep, hge_zero, hidx, lengthBE128_get!_zero _ _ hk8, hj120]
+      simp [hge_data, hne_sep, hge_zero, hidx, lengthBE128_get!_zero _ _ hk8, hj120]
     · have hk_ge8 : 8 ≤ j.val - 112 := by omega
       have h127 : 15 - (j.val - 112) = 127 - j.val := by omega
-      simp [hj112, hge_data, hne_sep, hge_zero, hidx,
+      simp [hge_data, hne_sep, hge_zero, hidx,
         lengthBE128_get!_eq _ _ hk_ge8 hk, h127, hj120]
 
 /-! ## Total padded block count -/

@@ -6,7 +6,14 @@ import spec.Preprocessing
 
 Parallel to `equiv/SHA256/Padding/ByteDecoding.lean` with SHA-512's
 1024-bit-block-mod, 896-residue, 128-bit length suffix (FIPS 180-4
-§5.1.2). -/
+§5.1.2).
+
+`bytesToBitMessage` decodes a `ByteArray` into the spec's `Message`
+(`List Bool`, MSB-first within each byte).  This file collects the
+distributivity laws of `bytesToBitMessage` over `++` / `push 0x80` /
+`appendZeros` / `lengthBE128`, plus the headline lemma
+`bytesToBitMessage_implPaddedBytes` that bridges the byte-level
+streaming pad to the spec's `SHS.SHA512.pad ∘ bytesToBitMessage`. -/
 
 open SHS.Equiv.Bytes
 open SHS.Equiv.ByteArray
@@ -18,16 +25,20 @@ namespace SHS.Equiv.SHA512.Padding.ByteDecoding
 
 open scoped SHS.SHA512
 
-/-- Decode a `ByteArray` into the spec's `Message`. -/
+/-- Decode a `ByteArray` into the spec's `Message` (`List Bool`,
+MSB-first within each byte). -/
 def bytesToBitMessage (data : ByteArray) : SHS.Message :=
   data.data.toList.flatMap fun b => byteToBits b
 
+/-- `bytesToBitMessage` distributes over `ByteArray.append`. -/
 theorem bytesToBitMessage_append (a b : ByteArray) :
     bytesToBitMessage (a ++ b) =
       bytesToBitMessage a ++ bytesToBitMessage b := by
   unfold bytesToBitMessage
   simp
 
+/-- Pushing the `0x80` separator appends the eight bits
+`[true, false, …, false]` (MSB-first). -/
 theorem bytesToBitMessage_push_0x80 (data : ByteArray) :
     bytesToBitMessage (data.push 0x80) =
       bytesToBitMessage data ++
@@ -37,6 +48,7 @@ theorem bytesToBitMessage_push_0x80 (data : ByteArray) :
   unfold byteToBits
   decide
 
+/-- `appendZeros` appends `8 * k` `false` bits. -/
 theorem bytesToBitMessage_appendZeros (bs : ByteArray) (k : Nat) :
     bytesToBitMessage (appendZeros bs k) =
       bytesToBitMessage bs ++ List.replicate (8 * k) false := by

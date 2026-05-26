@@ -94,7 +94,7 @@ theorem fromBits_toNat_of_length_le {N : Nat} (bits : List Bool) (h : bits.lengt
     -- `fromBits N [y] = 0 <<< 1 ||| (if y then 1 else 0) = if y then 1 else 0`.
     have hN_pos : 0 < N := by simp [List.length_append] at h; omega
     have hy : (SHS.Word.fromBits (n := N) [y]).toNat = (if y then 1 else 0) := by
-      simp [SHS.Word.fromBits, BitVec.toNat_or, BitVec.toNat_shiftLeft]
+      simp [SHS.Word.fromBits]
       split
       · rw [BitVec.toNat_one hN_pos]
       · simp

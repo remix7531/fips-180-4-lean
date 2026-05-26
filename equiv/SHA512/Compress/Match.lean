@@ -42,14 +42,19 @@ open scoped SHS.SHA512
 /-- Lift `Impl.Schedule` to spec `Schedule` by mapping each word through `toBitVec`. -/
 def toSpecSchedule (w : Impl.Schedule) : Schedule := w.map UInt64.toBitVec
 
+/-- In-bounds indexing commutes with `toSpecSchedule`. -/
 theorem toSpecSchedule_getElem (w : Impl.Schedule) (k : Nat) (hk : k < 80) :
     (toSpecSchedule w)[k]'hk = (w[k]'hk).toBitVec :=
   Vector.getElem_map ..
 
+/-- In-bounds indexing commutes with `toSpecState`. -/
 theorem toSpecState_getElem (s : Impl.State) (k : Nat) (hk : k < 8) :
     (toSpecState s)[k]'hk = (s[k]'hk).toBitVec :=
   Vector.getElem_map ..
 
+/-- Panicking indexing commutes with `toSpecSchedule`.  Both branches
+(in-bounds vs out-of-bounds) reduce via the corresponding `VecBridge`
+lemma. -/
 theorem toSpecSchedule_getElem! (w : Impl.Schedule) (t : Nat) :
     (toSpecSchedule w)[t]! = (w[t]!).toBitVec := by
   by_cases ht : t < 80
@@ -110,6 +115,10 @@ theorem implRoundStep_toSpec
   apply Vector.ext
   intro k hk
   rw [toSpecState_getElem]
+  -- Six variable-shift cases (b..d, f..h) close directly with `simp only`;
+  -- the `a` and `e` cases need `ac_rfl` after to reassociate the
+  -- `Σ + Ch + K + W + …` round-body sum.  `try` lets the same tactic body
+  -- close all eight cases without duplicating the `simp only` set.
   interval_cases k <;>
     (simp only [Vector.getElem_mk, List.getElem_toArray,
                 List.getElem_cons_zero, List.getElem_cons_succ,

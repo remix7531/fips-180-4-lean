@@ -2,6 +2,10 @@ import equiv.Common.Loop
 import impl.SHA256
 import spec.HashAlgorithms
 
+-- Bounds discharge inside `for h : t in [a:b] do` ranges.  Range
+-- membership (`Std.Legacy.Range`) carries `.upper` / `.lower`; extract
+-- them and let `grind` close the resulting arithmetic goals (e.g.
+-- `t < 64`, `t - 16 < 64`).
 local macro_rules
   | `(tactic| get_elem_tactic) =>
     `(tactic|

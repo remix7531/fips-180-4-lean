@@ -36,6 +36,12 @@ private theorem getLsbD_ifBit_pos {N : Nat} (hN : 0 < N) (x : Bool) (k : Nat) :
     (if x = true then (1 : BitVec N) else 0).getLsbD k = (decide (k = 0) && x) := by
   cases x <;> simp [BitVec.getLsbD_one, hN]
 
+-- The 64-way `interval_cases i <;> simp` at the bottom of this proof
+-- enumerates every bit position of a `BitVec 64`; each case unfolds
+-- `byteToBits` plus the eight shifted bytes' `getLsbD`s, so the per-case
+-- normalisation costs more than the default 200k-heartbeat budget.  This
+-- is the *only* per-bit enumeration in the SHA-512 digest stack; all
+-- wider widths (256 / 384 / 512) lift via `fromBits_setWidth_eq`.
 set_option maxHeartbeats 1600000 in
 /-- 64-bit ground identity: 8 BE bytes from a `UInt64` pack to `w.toBitVec`.
 The only place a per-bit `interval_cases` (64 cases) runs in the SHA-512
@@ -94,6 +100,10 @@ private theorem fromBits_8bytes_BE_512 (w : UInt64) :
     = (w.toBitVec).zeroExtend 512 :=
   fromBits_8bytes_BE_ge64 (by decide) w
 
+-- The RHS lists eight parallel `(List.range 8).map …` chunks, one per
+-- word index 0..7; the per-word lines are intentionally aligned for
+-- visual symmetry and breaking each across multiple lines hurts more
+-- than it helps.
 set_option linter.style.longLine false in
 /-- The 64-byte BE digest list, restated as 8 eight-byte chunks. -/
 private theorem digest_list_eq_8chunks (state : Impl.State) :
@@ -169,6 +179,8 @@ def extractDigest384 (state : Impl.State) : Vector UInt8 48 :=
     let byteIdx := i.val % 8
     ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
 
+-- Same parallel per-word alignment as `digest_list_eq_8chunks`; six
+-- chunks here (SHA-384 truncates to 48 bytes = 6 words).
 set_option linter.style.longLine false in
 private theorem digest384_list_eq_6chunks (state : Impl.State) :
     (Vector.ofFn (n := 48) fun i : Fin 48 =>
@@ -235,6 +247,8 @@ def extractDigest512_256 (state : Impl.State) : Vector UInt8 32 :=
     let byteIdx := i.val % 8
     ((state[wordIdx] >>> (UInt64.ofNat ((7 - byteIdx) * 8))) &&& 0xff).toUInt8
 
+-- Same parallel per-word alignment as `digest_list_eq_8chunks`; four
+-- chunks here (SHA-512/256 truncates to 32 bytes = 4 words).
 set_option linter.style.longLine false in
 private theorem digest512_256_list_eq_4chunks (state : Impl.State) :
     (Vector.ofFn (n := 32) fun i : Fin 32 =>

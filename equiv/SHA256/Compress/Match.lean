@@ -132,6 +132,10 @@ theorem MatchAfter_step
          List.getElem_cons_zero, List.getElem_cons_succ,
          toBitVec_add, ← bigSigma1_toBitVec, ← bigSigma0_toBitVec,
          ← Ch_toBitVec, ← Maj_toBitVec, hw, hK]
+       -- Seven cases (b..h) close by `assumption` against `h0..h7`; the
+       -- single remaining `a`-case needs the `simp only [h0..h7]; ac_rfl`
+       -- to reassociate `Σ₀ + Maj + …`.  `try` lets one tactic per line
+       -- handle either pattern without per-case bullets.
        try assumption
        try (simp only [h0, h1, h2, h3, h4, h5, h6, h7]; ac_rfl))
   case ring_match =>

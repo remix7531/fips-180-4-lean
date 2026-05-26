@@ -11,7 +11,17 @@ SHA-512 rotation constants (FIPS 180-4 §4.1.3):
 * `σ₀` rotates by 1, 8; shifts right by 7
 * `σ₁` rotates by 19, 61; shifts right by 6
 
-`Ch` and `Maj` are width-agnostic and follow the SHA-256 shape. -/
+`Ch` and `Maj` are width-agnostic and follow the SHA-256 shape.
+
+For each spec function we prove a `@[simp]` lemma rewriting a call on
+*lifted* `UInt64` arguments to the lifting of the implementation's
+expression.  Together with the operator bridges from `Bridge.lean`,
+this lets the round-body equivalence in `Compress/Match.lean` reduce
+to `simp`.
+
+Proof shape (for all six lemmas): unfold the spec definition, then
+`simp only` with the operator bridges from `Bridge.lean` to push
+`toBitVec` to the leaves; what remains closes by `ac_rfl`. -/
 
 open SHS.Equiv.SHA512.Bridge
 

@@ -53,6 +53,9 @@ private theorem fourBytes_take_drop (bs : ByteArray) (i j : Nat)
     simp only [List.length_cons, List.length_nil] at hk2
     interval_cases k <;> simp [List.getElem_take, List.getElem_drop, Nat.add_assoc]
 
+/-- The lifted byte-block view of the streaming pad equals the
+byte-level `parseBytes` of the padded bytes.  Both unfold to the same
+`Array.ofFn` indexing the same `implPaddedBytes`. -/
 private theorem implPaddedBlocks_eq_parseBytes (data : ByteArray) :
     (implPaddedBlocks data).map (fun b => toSpecBlock (Impl.toU32s b)) =
       parseBytes (implPaddedBytes data) := by
@@ -141,6 +144,11 @@ private theorem parseBytes_eq_parse (bs : ByteArray) (hMod : bs.size % 64 = 0) :
         get!_eq_toList_getElem bs (i * 64 + 4 * j + 3) (by omega)]
     simp [List.append_assoc]
 
+/-- The headline of this file: lifting `implPaddedBlocks` through
+`toSpecBlock ∘ Impl.toU32s` equals the spec's `parse (pad msg)` of the
+input bit-message.  Routes through `parseBytes` as the intermediate
+byte-level form.  Consumed by `Pipeline.lean`'s `implPaddedBlocks_lift`
+rewrite. -/
 theorem implPaddedBlocks_lift_eq_parsePad (data : ByteArray)
     (h : data.size < 2 ^ 61) :
     (implPaddedBlocks data).map (fun b => toSpecBlock (Impl.toU32s b)) =

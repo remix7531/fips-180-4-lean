@@ -2,9 +2,24 @@ import equiv.SHA512.Pipeline
 
 /-! # SHA-512 spec ↔ implementation — main user-facing theorems
 
-* `compress_correct` — per-block.
-* `sha512_correct`   — top-level.
--/
+This file contains the headline equivalences for the SHA-512 family:
+
+* `compress_correct`     — per-block: `Impl.compress` ↔ `SHS.SHA512.compress`.
+* `sha512_correct`       — top-level: `Impl.sha512` ↔ `SHS.SHA512.sha512`.
+* `sha384_correct`       — top-level: `Impl.sha384` ↔ `SHS.SHA512.sha384`.
+* `sha512_256_correct`   — top-level: `Impl.sha512_256` ↔ `SHS.SHA512.sha512_256`.
+* `sha512_224_correct`   — top-level: `Impl.sha512_224` ↔ `SHS.SHA512.sha512_224`.
+
+The four top-level theorems all share the same proof structure (a
+chain of rewrites through the impl-refactored / extract / fold-lift /
+parse-pad / spec-unfold ladder, followed by an 8-way `H[i]! = H[i]'hi`
+bump).  Only the IV (`H0_{512,384,512_256,512_224}`) and the digest
+width (`digestBitVec{512,384,512_256,512_224}`) differ across the four.
+
+`sha512_224_correct` is unusual: its 28-byte digest crosses a 64-bit
+word boundary (3 full words plus the top 32 bits of word 4), so it
+routes through the SHA-512/256 32-byte digest and applies `leftmost
+224` via the width-generic `fromBits_leftmost` identity. -/
 
 open SHS.Equiv.SHA512.Lift
 open SHS.Equiv.SHA512.Compress.Impl

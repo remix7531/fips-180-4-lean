@@ -145,11 +145,15 @@ def implTupleRoundStep (w : Impl.Schedule) (t : Nat) : ImplVarsTuple → ImplVar
     let t2 := s0 + mj
     ⟨t1 + t2, a, b, c, d + t1, e, f, g⟩
 
+/-- `implTupleRoundStep` matches `implRoundStep` once both states are
+viewed through `implTupleToVec`. -/
 theorem implTupleToVec_implTupleRoundStep
     (w : Impl.Schedule) (t : Fin 80) (r : ImplVarsTuple) :
     implTupleToVec (implTupleRoundStep w t.val r) =
       implRoundStep w t.val (implTupleToVec r) := by rfl
 
+/-- The initial 8-tuple `⟨state[0], …, state[7]⟩` projects back to
+`state` through `implTupleToVec`.  Closes by enumerating the 8 indices. -/
 theorem implTupleToVec_init (state : Impl.State) :
     implTupleToVec
       (⟨state[0], state[1], state[2], state[3], state[4], state[5], state[6], state[7]⟩

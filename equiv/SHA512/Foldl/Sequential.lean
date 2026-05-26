@@ -1,6 +1,8 @@
 import equiv.Common.Loop
 import spec.HashAlgorithms
 
+-- Bounds discharge inside `for h : t in [a:b] do` ranges; see the
+-- matching note in `equiv/SHA512/Foldl/Schedule.lean`.
 local macro_rules
   | `(tactic| get_elem_tactic) =>
     `(tactic|
@@ -24,11 +26,21 @@ namespace SHS.Equiv.SHA512.Foldl.Sequential
 
 open scoped SHS.SHA512
 
+/-- Eight working variables `(a, b, c, d, e, f, g, h)`, in the spec's
+`BitVec 64` representation. -/
 abbrev SpecVars := Vector (BitVec 64) 8
 
+/-- Build the initial working variables from the input hash value. -/
 def initVars (H : HashValue) : SpecVars :=
   Vector.ofFn (fun i : Fin 8 => H[i.val]!)
 
+/-- One round of the SHA-512 spec's compression loop, as a pure function:
+shifts `(a..h)` by one, with `a` and `e` updated by the standard
+`T1`/`T2` mixing.  This matches the body of the `for t in [0:80]` loop
+in `SHS.SHA512.compress`.
+
+Indexed by `Nat` rather than `Fin 80`: see `specScheduleStep` for the
+rationale. -/
 def specRoundStep (W : Schedule) (t : Nat) (s : SpecVars) : SpecVars :=
   let a := s[0]; let b := s[1]; let c := s[2]; let d := s[3]
   let e := s[4]; let f := s[5]; let g := s[6]; let h := s[7]
@@ -36,19 +48,34 @@ def specRoundStep (W : Schedule) (t : Nat) (s : SpecVars) : SpecVars :=
   let T2 := SHS.SHA512.bigSigma0 a + SHS.SHA512.Maj a b c
   #v[T1 + T2, a, b, c, d + T1, e, f, g]
 
+/-- Add the post-loop working variables back into the input hash value. -/
 def addH (H : HashValue) (s : SpecVars) : HashValue :=
   #v[s[0] + H[0]!, s[1] + H[1]!, s[2] + H[2]!, s[3] + H[3]!,
     s[4] + H[4]!, s[5] + H[5]!, s[6] + H[6]!, s[7] + H[7]!]
 
+/-! ## Spec-tuple bridge
+
+When Lean desugars `Id.run do { mut a..h; for t in [0:80] do … }`, the
+eight `mut` variables become a *nested right-associated `MProd`* —
+NOT a custom structure.  The abbreviations and lemmas below mirror
+that exact shape so the proof can pattern-match the desugaring directly. -/
+
+/-- The 8-tuple of `BitVec 64` carrying the spec compress's working
+variables `(a, b, c, d, e, f, g, h)`, matching the *exact* nested
+`MProd` shape produced by `Id.run do { mut a..h; for ... }` desugaring. -/
 abbrev SpecVarsTuple :=
   MProd (BitVec 64) (MProd (BitVec 64) (MProd (BitVec 64) (MProd (BitVec 64)
     (MProd (BitVec 64) (MProd (BitVec 64) (MProd (BitVec 64) (BitVec 64)))))))
 
+/-- Convert the desugared tuple state into a `SpecVars` vector. -/
 def tupleToVec (t : SpecVarsTuple) : SpecVars :=
   #v[t.fst, t.snd.fst, t.snd.snd.fst, t.snd.snd.snd.fst,
      t.snd.snd.snd.snd.fst, t.snd.snd.snd.snd.snd.fst,
      t.snd.snd.snd.snd.snd.snd.fst, t.snd.snd.snd.snd.snd.snd.snd]
 
+/-- The desugared tuple round step matches the body of spec's
+`Id.run do` form: destructure `r` via `.fst`/`.snd.fst`/…, compute
+`T1`/`T2`, rotate, and rebuild via anonymous constructor. -/
 def tupleRoundStep (W : Schedule) (t : Nat) (r : SpecVarsTuple) : SpecVarsTuple :=
   let a := r.fst
   let x := r.snd
@@ -68,15 +95,20 @@ def tupleRoundStep (W : Schedule) (t : Nat) (r : SpecVarsTuple) : SpecVarsTuple 
   let T2 := SHS.SHA512.bigSigma0 a + SHS.SHA512.Maj a b c
   ⟨T1 + T2, a, b, c, d + T1, e, f, g⟩
 
+/-- The tuple round step matches `specRoundStep` once both states are
+viewed through `tupleToVec`. -/
 @[simp] theorem tupleToVec_tupleRoundStep (W : Schedule) (t : Fin 80) (r : SpecVarsTuple) :
     tupleToVec (tupleRoundStep W t.val r) = specRoundStep W t.val (tupleToVec r) := by
   rfl
 
+/-- The initial tuple state matches `initVars H` through `tupleToVec`. -/
 @[simp] theorem tupleToVec_init (H : HashValue) :
     tupleToVec (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple) =
       initVars H := by
   unfold initVars tupleToVec; rfl
 
+/-- `addH H` applied to a `tupleToVec`-converted tuple equals the
+explicit 8-element vector adding each tuple projection to `H[i]!`. -/
 @[simp] theorem addH_tupleToVec (H : HashValue) (r : SpecVarsTuple) :
     addH H (tupleToVec r) =
       (#v[r.fst + H[0]!, r.snd.fst + H[1]!, r.snd.snd.fst + H[2]!,
@@ -85,17 +117,34 @@ def tupleRoundStep (W : Schedule) (t : Nat) (r : SpecVarsTuple) : SpecVarsTuple 
           r.snd.snd.snd.snd.snd.snd.snd + H[7]!] : HashValue) := by
   rfl
 
+/-- Spec `compress` in **sequential** pure-foldl form: precompute the
+full 80-word schedule, then fold the round body over the 80 rounds. -/
 def specCompressSeq (H : HashValue) (M : Block) : HashValue :=
   addH H (Fin.foldl 80
     (fun s (t : Fin 80) => specRoundStep (SHS.SHA512.schedule M) t.val s) (initVars H))
 
+/-- The spec's `compress` equals its sequential pure-foldl form
+(`specCompressSeq`).  Downstream consumers reason against
+`specCompressSeq` instead of the `Id.run do` form.
+
+After unfolding both sides, LHS is the literal `Id.run do { mut a..h;
+for t in [0:80] do … }` desugared into a let-chain wrapping `(forIn
+[0:80] ⟨a..h⟩ stepBody).run` followed by an extract-and-add pattern.
+The `tupleRoundStep` definition above mirrors the desugaring's `stepBody`
+exactly, so `forIn_id_eq_Fin_foldl` lifts the inner `forIn` to a
+`Fin.foldl` over `tupleRoundStep`; `tupleToVec_*` simp-lemmas then
+bridge to `addH H (Fin.foldl 80 specRoundStep (initVars H))`. -/
 theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
     SHS.SHA512.compress H M = specCompressSeq H M := by
   unfold specCompressSeq SHS.SHA512.compress
+  -- Spec body: explicit tuple form with bound proofs.
   let bodyTup : (t : Nat) → t ∈ [0:80] → SpecVarsTuple → Id (ForInStep SpecVarsTuple) :=
     fun t h r =>
       have h80 : t < 80 := h.upper
       pure (ForInStep.yield (tupleRoundStep (SHS.SHA512.schedule M) t r))
+  -- Show the spec do-block reduces to:
+  --   addH H (tupleToVec (Id.run (forIn' [0:80] ⟨H[0]!,...⟩ bodyTup)))
+  -- since `H[i]` (with proof) equals `H[i]!` for `i < 8`, and likewise for `K[t]`/`W[t]`.
   have hH (i : Nat) (hi : i < 8) : H[i]'hi = H[i]! :=
     (SHS.Equiv.VecBridge.getElem_bang_eq_getElem H i hi).symm
   have hbody : (fun (t : Nat) (h : t ∈ [0:80]) (r : SpecVarsTuple) =>
@@ -113,6 +162,7 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
     have h80 : t < 80 := h.upper
     rw [SHS.Equiv.VecBridge.getElem_bang_eq_getElem SHS.SHA512.K t h80,
         SHS.Equiv.VecBridge.getElem_bang_eq_getElem (SHS.SHA512.schedule M) t h80]
+  -- Reduce the spec do-block (matching its desugared form exactly).
   show Id.run (do
         let r ← forIn' [0:80]
           (⟨H[0]'(by decide), H[1]'(by decide), H[2]'(by decide), H[3]'(by decide),
@@ -132,6 +182,7 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
           pure (#v[a + H[0], b + H[1], c + H[2], d + H[3],
                   e + H[4], f + H[5], g + H[6], h + H[7]] : HashValue)) = _
   rw [hbody]
+  -- Now bridge forIn' → forIn.
   show (Id.run (forIn' [0:80]
           (⟨H[0]'(by decide), H[1]'(by decide), H[2]'(by decide), H[3]'(by decide),
              H[4]'(by decide), H[5]'(by decide),
@@ -141,6 +192,7 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
           | ⟨a, b, c, d, e, f, g, h⟩ =>
             (#v[a + H[0], b + H[1], c + H[2], d + H[3],
                 e + H[4], f + H[5], g + H[6], h + H[7]] : HashValue)) = _
+  -- Replace `H[i]` (with proof) by `H[i]!` everywhere using hH.
   have hinit_eq :
       (⟨H[0]'(by decide), H[1]'(by decide), H[2]'(by decide), H[3]'(by decide),
          H[4]'(by decide), H[5]'(by decide), H[6]'(by decide), H[7]'(by decide)⟩ : SpecVarsTuple) =
@@ -156,9 +208,13 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
           (tupleRoundStep (SHS.SHA512.schedule M) t r)))) from by
     rw [← forIn'_id_eq_forIn 0 80 _
           (fun t r => tupleRoundStep (SHS.SHA512.schedule M) t r)]]
+  -- Convert to Fin.foldl, transport via tupleToVec.
   rw [forIn_id_eq_Fin_foldl 80
         (⟨H[0]!, H[1]!, H[2]!, H[3]!, H[4]!, H[5]!, H[6]!, H[7]!⟩ : SpecVarsTuple)
         (tupleRoundStep (SHS.SHA512.schedule M))]
+  -- Now the goal is:
+  --   (match Fin.foldl ... ⟨H[0]!,...⟩ with | ⟨a,...,h⟩ => #v[a + H[0],...]) = addH H (...)
+  -- Pull out the matched tuple, then unfold `addH` on the RHS via `tupleToVec`.
   have hfinal :
       (fun r : SpecVarsTuple =>
         match r with
@@ -171,6 +227,7 @@ theorem spec_compress_eq_seq (H : HashValue) (M : Block) :
     simp only [addH, tupleToVec]
     rw [← hH 0, ← hH 1, ← hH 2, ← hH 3, ← hH 4, ← hH 5, ← hH 6, ← hH 7]
     rfl
+  -- Apply hfinal pointwise.
   show (fun r : SpecVarsTuple =>
           match r with
           | ⟨a, b, c, d, e, f, g, h⟩ =>

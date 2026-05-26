@@ -1,6 +1,8 @@
 import equiv.Common.Loop
 import spec.HashAlgorithms
 
+-- Bounds discharge inside `for h : t in [a:b] do` ranges; see the
+-- matching note in `equiv/SHA256/Foldl/Schedule.lean`.
 local macro_rules
   | `(tactic| get_elem_tactic) =>
     `(tactic|

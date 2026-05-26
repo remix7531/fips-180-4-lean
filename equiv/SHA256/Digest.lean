@@ -70,7 +70,7 @@ private theorem fromBits_4bytes_BE_32 (w : UInt32) :
     UInt8.toNat_testBit_eq_getLsbD]
   apply BitVec.eq_of_getLsbD_eq
   intro i hi
-  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, BitVec.getLsbD_setWidth,
+  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft,
     getLsbD_ifBit_pos (by decide : (0 : Nat) < 32)]
   interval_cases i <;> simp
 
@@ -195,6 +195,8 @@ def extractDigest224 (state : Impl.State) : Vector UInt8 28 :=
     let byteIdx := i.val % 4
     ((state[wordIdx] >>> (UInt32.ofNat ((3 - byteIdx) * 8))) &&& 0xff).toUInt8
 
+-- Parallel-aligned per-word chunks (same justification as
+-- `digest_list_eq_8chunks` above, truncated to seven words).
 set_option linter.style.longLine false in
 /-- The 28-byte BE digest list, restated as 7 four-byte chunks (parallel
 to `digest_list_eq_8chunks`, truncated to seven words). -/

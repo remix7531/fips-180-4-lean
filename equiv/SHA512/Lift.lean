@@ -29,7 +29,11 @@ spec's `Block` (a `Vector` of sixteen `BitVec 64`s). -/
 def toSpecBlock (b : Impl.Block) : Block :=
   b.map UInt64.toBitVec
 
-/-! ## Indexing simp lemmas -/
+/-! ## Indexing simp lemmas
+
+Bridge spec-side indexing on a lifted container to the implementation's
+bounds-checked `_[i]` access.  Phrased over `Fin n` so the bound is
+automatic. -/
 
 @[simp] theorem getElem!_toSpecState (s : Impl.State) (i : Fin 8) :
     (toSpecState s)[i.val]! = s[i].toBitVec := by
@@ -39,7 +43,13 @@ def toSpecBlock (b : Impl.Block) : Block :=
     (toSpecBlock b)[i.val]! = b[i].toBitVec := by
   simp [toSpecBlock, getElem!_pos]
 
-/-! ## Initial-state bridge -/
+/-! ## Initial-state bridge
+
+Each `Impl.H0_*` and `SHS.SHA512.H0_*` is eight literal 64-bit
+constants; the four IV lifts below are pointwise by `rfl` per index.
+We enumerate the eight indices via `match` rather than calling
+`native_decide` (which would inflate the trust base with
+`Lean.ofReduceBool`/`trustCompiler`). -/
 
 /-- The impl's initial hash value `H0_512` lifts to the spec's `H0_512`. -/
 @[simp] theorem toSpecState_H0_512 :
@@ -50,7 +60,8 @@ def toSpecBlock (b : Impl.Block) : Block :=
   match i, hi with
   | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
 
-/-- SHA-384 IV lift. -/
+/-- SHA-384 IV lift; same eight-index enumeration shape as
+`toSpecState_H0_512`. -/
 @[simp] theorem toSpecState_H0_384 :
     toSpecState Impl.H0_384 = SHS.SHA512.H0_384 := by
   apply Vector.ext; intro i hi
@@ -59,7 +70,7 @@ def toSpecBlock (b : Impl.Block) : Block :=
   match i, hi with
   | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
 
-/-- SHA-512/256 IV lift. -/
+/-- SHA-512/256 IV lift; same eight-index enumeration shape. -/
 @[simp] theorem toSpecState_H0_512_256 :
     toSpecState Impl.H0_512_256 = SHS.SHA512.H0_512_256 := by
   apply Vector.ext; intro i hi
@@ -68,7 +79,7 @@ def toSpecBlock (b : Impl.Block) : Block :=
   match i, hi with
   | 0, _ | 1, _ | 2, _ | 3, _ | 4, _ | 5, _ | 6, _ | 7, _ => rfl
 
-/-- SHA-512/224 IV lift. -/
+/-- SHA-512/224 IV lift; same eight-index enumeration shape. -/
 @[simp] theorem toSpecState_H0_512_224 :
     toSpecState Impl.H0_512_224 = SHS.SHA512.H0_512_224 := by
   apply Vector.ext; intro i hi

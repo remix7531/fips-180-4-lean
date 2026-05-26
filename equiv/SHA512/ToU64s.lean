@@ -11,7 +11,11 @@ import Mathlib.Tactic.IntervalCases
 Parallel to `equiv/SHA256/ToU32s.lean` at 64-bit width with 8 bytes
 per word, 128 bytes per block (16 words).  The byte → bit primitive
 `byteToBits` is shared from `equiv/Common/Bytes.lean`.
--/
+
+Each `UInt64` produced by `Impl.beU64` (big-endian decode of eight
+bytes) matches the spec's `Word.fromBits` over the 64 corresponding
+bits (MSB-first within each byte).  This file only owns the
+SHA-512-specific 8-byte / 16-word assembly. -/
 
 open SHS.Equiv.Bytes
 open SHS.Equiv.SHA512.Bridge
@@ -34,7 +38,9 @@ def eightBytesBits (bytes : Vector UInt8 128) (i : Fin 16) : List Bool :=
   byteToBits (bytes[8 * i.val + 6]'(by omega)) ++
   byteToBits (bytes[8 * i.val + 7]'(by omega))
 
-/-- Selector lemma at arbitrary `N`. -/
+/-- Selector lemma: extracting the `k`-th LSB of `if x then 1 else 0`
+yields `x` at `k = 0` and `false` elsewhere.  Stated parametrically in
+`N` because both width `8` (per byte) and width `64` (per word) need it. -/
 private theorem getLsbD_ifBit (N : Nat) (x : Bool) (k : Nat) :
     (if x = true then (1 : BitVec N) else 0).getLsbD k =
       (decide (0 < N) && decide (k = 0) && x) := by
@@ -54,6 +60,10 @@ theorem fromBits_byteToBits (b : UInt8) :
   simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
   interval_cases i <;> simp
 
+-- Like `fromBits_8bytes_BE_64` in `Digest.lean`, this proof ends in a
+-- 64-way `interval_cases k <;> simp` enumerating every bit position.  At
+-- 64 bits each `simp` closes a small but non-trivial `getLsbD` goal, so
+-- the default 200k-heartbeat budget is too tight.
 set_option maxHeartbeats 800000 in
 /-- Per-word bridge: impl `beU64` decode equals spec `Word.fromBits`
 over the 64 MSB-first bits of the same eight bytes. -/
@@ -77,12 +87,20 @@ theorem beU64_eq_fromBits (bytes : Vector UInt8 128) (i : Fin 16) :
   simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
   interval_cases k <;> simp
 
-/-! ## Block-level bridge -/
+/-! ## Block-level bridge
+
+The 16-way assembly: `toSpecBlock (Impl.toU64s block)` matches the
+spec's per-block parse (`(bits.toChunks 64).map Word.fromBits |>.toArray`)
+over the corresponding 1024 bits. -/
 
 /-- Bits of a 128-byte block as a single 1024-element MSB-first list. -/
 def blockToBits (block : Vector UInt8 128) : List Bool :=
   block.toList.flatMap byteToBits
 
+/-- Per-word bridge: the `i`-th word of `toSpecBlock (Impl.toU64s block)`
+equals `Word.fromBits` of the `i`-th 64-bit slice.  Same structure as
+the SHA-256 parallel: project via `getElem!_toSpecBlock`, reduce
+`Vector.ofFn` then close by `beU64_eq_fromBits`. -/
 theorem toSpecBlock_toU64s_index (block : Vector UInt8 128) (i : Fin 16) :
     (toSpecBlock (Impl.toU64s block))[i.val]! =
       SHS.Word.fromBits (n := 64) (eightBytesBits block i) := by
@@ -92,8 +110,16 @@ theorem toSpecBlock_toU64s_index (block : Vector UInt8 128) (i : Fin 16) :
     Vector.getElem_ofFn (i := i.val) i.isLt]
   exact beU64_eq_fromBits block i
 
-/-! ## Fast `ByteArray`-direct path -/
+/-! ## Fast `ByteArray`-direct path
 
+`Impl.sha512` reads bytes straight out of the input `ByteArray` via
+`toU64sFromBytes data off` rather than materialising a per-block
+`Vector UInt8 128`.  This lemma bridges the fast path to the existing
+equivalence machinery (which is stated against the `Vector` form). -/
+
+/-- The direct-from-`ByteArray` path produces the same `Block` as the
+old `toU64s ∘ Vector.ofFn` shape.  Both bodies are `Vector.ofFn`s
+whose underlying functions agree pointwise after `Vector.ofFn` β-reduction. -/
 theorem toU64sFromBytes_eq_toU64s (data : ByteArray) (off : Nat) :
     Impl.toU64sFromBytes data off =
       Impl.toU64s (Vector.ofFn fun j : Fin 128 => data.get! (off + j.val)) := by
