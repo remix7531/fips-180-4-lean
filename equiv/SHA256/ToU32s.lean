@@ -3,7 +3,6 @@ import spec.Setup
 import equiv.SHA256.Bridge
 import equiv.SHA256.Lift
 import equiv.Common.Bytes
-import Mathlib.Tactic.IntervalCases
 
 /-!
 # Per-block byte → word lift bridge
@@ -37,67 +36,28 @@ def fourBytesBits (bytes : Vector UInt8 64) (i : Fin 16) : List Bool :=
   byteToBits (bytes[4 * i.val + 2]'(by omega)) ++
   byteToBits (bytes[4 * i.val + 3]'(by omega))
 
-/-- Selector lemma: extracting the `k`-th LSB of `if x then 1 else 0`
-yields `x` at `k = 0` and `false` elsewhere.  Stated parametrically in
-`N` because both width `8` (per byte) and width `32` (per word) need it. -/
-private theorem getLsbD_ifBit (N : Nat) (x : Bool) (k : Nat) :
-    (if x = true then (1 : BitVec N) else 0).getLsbD k =
-      (decide (0 < N) && decide (k = 0) && x) := by
-  cases x <;> simp [BitVec.getLsbD_one]
-
-/-- `Word.fromBits` of one byte's MSB-first bit list equals the byte's
-underlying `BitVec 8`.  Unfolds `byteToBits` + the 8-step foldl into a
-shifted-or expression on `BitVec 8`, then closes via `getLsbD` extension
-plus an 8-way enumeration on the bit index. -/
-theorem fromBits_byteToBits (b : UInt8) :
-    (SHS.Word.fromBits (n := 8) (byteToBits b)) = b.toBitVec := by
-  unfold byteToBits SHS.Word.fromBits
-  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.map_cons, List.map_nil, List.foldl,
-    UInt8.toNat_testBit_eq_getLsbD]
-  apply BitVec.eq_of_getLsbD_eq
-  intro i hi
-  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
-  interval_cases i <;> simp
-
-/-- Per-word bridge: the impl's `beU32` decode equals the spec's
-`Word.fromBits` over the 32 MSB-first bits of the same four bytes.
-Same shape as `fromBits_byteToBits` at width 32: unfold to shifted-or,
-then close via `getLsbD` extension over `i ∈ {0..31}`. -/
+/-- `beU32` packs the same four bytes in the same order as `Word.fromBits`. -/
 theorem beU32_eq_fromBits (bytes : Vector UInt8 64) (i : Fin 16) :
     (Impl.beU32 bytes i).toBitVec =
       SHS.Word.fromBits (n := 32) (fourBytesBits bytes i) := by
-  unfold Impl.beU32 fourBytesBits byteToBits SHS.Word.fromBits
-  generalize bytes[4 * i.val]'(by omega) = b0
-  generalize bytes[4 * i.val + 1]'(by omega) = b1
-  generalize bytes[4 * i.val + 2]'(by omega) = b2
-  generalize bytes[4 * i.val + 3]'(by omega) = b3
-  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.map_cons, List.map_nil,
-    List.foldl, UInt8.toNat_testBit_eq_getLsbD]
-  apply BitVec.eq_of_getLsbD_eq
-  intro k hk
-  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
-  interval_cases k <;> simp
+  unfold Impl.beU32 fourBytesBits
+  simp (discharger := decide) only [FromBits.fromBits_append_same_width, fromBits_byteToBits,
+    byteToBits_length, UInt32.toBitVec_or, toBitVec_shl_of_lt, UInt8.toBitVec_toUInt32,
+    BitVec.or_assoc]
+  simp only [BitVec.shiftLeft_or_distrib, ← BitVec.shiftLeft_add, Nat.reduceAdd, BitVec.or_assoc]
+  rfl
 
 /-! ## Block-level bridge
 
 The 16-way assembly: `toSpecBlock (Impl.toU32s block)` matches the spec's
-per-block parse (`(bits.toChunks 32).map Word.fromBits |>.toArray`) over
+per-block parse (`(listChunks 32 bits).map Word.fromBits |>.toArray`) over
 the corresponding 512 bits. -/
 
 /-- Bits of a 64-byte block as a single 512-element MSB-first list. -/
 def blockToBits (block : Vector UInt8 64) : List Bool :=
   block.toList.flatMap byteToBits
 
-/-- Per-word bridge: the `i`-th word of `toSpecBlock (Impl.toU32s block)`
-equals `Word.fromBits` of the `i`-th 32-bit slice of `blockToBits block`.
-
-This is the bridging fact between the impl's `Vector.ofFn`-based
-indexing and the spec's `List.toChunks 32` slicing.  Proof outline:
-unfold both sides; show the 32-bit slice equals `fourBytesBits block i`
-by list bookkeeping over `flatMap` chunks of 8; close with
-`beU32_eq_fromBits`. -/
+/-- The indexed word packs the bytes read by the implementation decoder. -/
 theorem toSpecBlock_toU32s_index (block : Vector UInt8 64) (i : Fin 16) :
     (toSpecBlock (Impl.toU32s block))[i.val]! =
       SHS.Word.fromBits (n := 32) (fourBytesBits block i) := by
@@ -110,6 +70,25 @@ theorem toSpecBlock_toU32s_index (block : Vector UInt8 64) (i : Fin 16) :
     Vector.getElem_ofFn (i := i.val) i.isLt]
   -- Closing: per-word bridge.
   exact beU32_eq_fromBits block i
+
+/-- The explicit byte reads in a word form a contiguous slice of the block. -/
+private theorem fourBytesBits_eq_slice (block : Vector UInt8 64) (index : Fin 16) :
+    fourBytesBits block index =
+      ((block.toList.drop (4 * index.val)).take 4).flatMap byteToBits := by
+  have wordFits : 4 * index.val + 4 ≤ 64 := by omega
+  simp (discharger := (simp only [List.length_drop, Vector.length_toList]; omega))
+    only [fourBytesBits, List.take_succ_eq_append_getElem, List.take_zero, List.getElem_drop,
+      List.flatMap_append, List.flatMap_cons, List.flatMap_nil, List.nil_append, List.append_nil,
+      Vector.getElem_toList, Nat.add_zero, List.append_assoc]
+
+/-- Each decoded word packs one contiguous word-sized slice of the block bits. -/
+theorem toSpecBlock_toU32s_slice (block : Vector UInt8 64) (index : Fin 16) :
+    (toSpecBlock (Impl.toU32s block))[index.val]! =
+      SHS.Word.fromBits (n := 32)
+        (((blockToBits block).drop (index.val * 32)).take 32) := by
+  rw [toSpecBlock_toU32s_index, fourBytesBits_eq_slice, blockToBits]
+  rw [show index.val * 32 = 8 * (4 * index.val) by omega, show 32 = 8 * 4 from rfl,
+    flatMap_byteToBits_drop_8, flatMap_byteToBits_take_8]
 
 /-! ## Fast `ByteArray`-direct path
 
@@ -125,14 +104,17 @@ whose underlying functions agree pointwise after one `Vector.ofFn` β-reduction.
 theorem toU32sFromBytes_eq_toU32s (data : ByteArray) (off : Nat) :
     Impl.toU32sFromBytes data off =
       Impl.toU32s (Vector.ofFn fun j : Fin 64 => data.get! (off + j.val)) := by
-  apply Vector.ext
-  intro i hi
   -- Both sides reduce per index `i ∈ {0..15}` to the same four-byte read
   -- expression at `data.get! (off + 4*i + k)` for k ∈ {0..3}.  The LHS is
   -- now an explicit `#v[..16..]` construction; the RHS goes through two
   -- `Vector.ofFn` β-reductions plus an associativity normalization.
-  simp only [Impl.toU32sFromBytes, Impl.toU32s, Impl.beU32FromBytes, Impl.beU32,
-    Vector.getElem_ofFn, ← Nat.add_assoc]
-  interval_cases i <;> rfl
+  have wordsAgree : ∀ i : Fin 16,
+      (Impl.toU32sFromBytes data off)[i] =
+        (Impl.toU32s (Vector.ofFn fun j : Fin 64 => data.get! (off + j.val)))[i] := by
+    simp only [Impl.toU32sFromBytes, Impl.toU32s, Impl.beU32FromBytes, Impl.beU32,
+      Fin.getElem_fin, Vector.getElem_ofFn, ← Nat.add_assoc]
+    simp only [Fin.forall_fin_succ, Fin.forall_fin_zero]
+    repeat' first | apply And.intro | rfl | trivial
+  exact Vector.ext fun i hi => wordsAgree ⟨i, hi⟩
 
 end SHS.Equiv.SHA256.ToU32s

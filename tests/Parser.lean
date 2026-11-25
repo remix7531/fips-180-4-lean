@@ -4,8 +4,8 @@
 Parser for NIST CAVP `.rsp` test vector files.
 
 The `.rsp` format groups test cases into blocks separated by blank lines.
-Each block contains `key = value` pairs. Lines starting with `#` are comments;
-lines in `[...]` brackets are section metadata. Values are typically hex strings.
+Each block contains `key = value` pairs. Lines starting with `#` are comments.
+An optional `[L = n]` header gives the digest size in bytes.
 
 Example:
 ```
@@ -35,35 +35,53 @@ def Block.find? (b : Block) (key : String) : Option String :=
 
 private def parseLine (line : String) : Option (String × String) :=
   match line.splitOn "=" with
-  | key :: rest@(_ :: _) =>
-    some (key.trimAscii.toString, (String.intercalate "=" rest).trimAscii.toString)
+  | [key, value] =>
+    let key := key.trimAscii.toString
+    if key.isEmpty then none else some (key, value.trimAscii.toString)
   | _ => none
 
-/-- Parse the contents of an `.rsp` file into a sequence of blocks.
-    Lines starting with `#` (comments) or `[` (section metadata) are ignored. -/
-def parse (content : String) : Array Block := Id.run do
+/-- Parse the header and record blocks of an `.rsp` file. -/
+def parse (content : String) : Except String (Option Nat × Array Block) := do
+  let mut digestSize := none
   let mut blocks : Array Block := #[]
   let mut current : Array (String × String) := #[]
+  let mut lineNumber := 0
   for rawLine in content.splitOn "\n" do
+    lineNumber := lineNumber + 1
     let line := rawLine.trimAscii.toString
     if line.isEmpty then
       if !current.isEmpty then
         blocks := blocks.push ⟨current⟩
         current := #[]
-    else if line.startsWith "#" || line.startsWith "[" then
-      pure ()
-    else
-      match parseLine line with
-      | some kv => current := current.push kv
-      | none    => pure ()
+      continue
+    if line.startsWith "#" then continue
+    if line.startsWith "[" then
+      unless line.endsWith "]" && digestSize.isNone && blocks.isEmpty && current.isEmpty do
+        throw s!"line {lineNumber}: unexpected header"
+      let some ("L", value) := parseLine ((line.drop 1).dropEnd 1).toString
+        | throw s!"line {lineNumber}: expected [L = n]"
+      let some size := value.toNat?
+        | throw s!"line {lineNumber}: invalid digest size"
+      digestSize := some size
+      continue
+    let some (key, value) := parseLine line
+      | throw s!"line {lineNumber}: expected key = value"
+    if current.any (·.1 == key) then
+      throw s!"line {lineNumber}: duplicate field {key}"
+    current := current.push (key, value)
   if !current.isEmpty then
     blocks := blocks.push ⟨current⟩
-  return blocks
+  return (digestSize, blocks)
 
 /-- Read and parse an `.rsp` file from disk. -/
-def load (path : System.FilePath) : IO (Array Block) := do
+def load (path : System.FilePath) (digestSize : Nat) : IO (Array Block) := do
   let content ← IO.FS.readFile path
-  return parse content
+  match parse content with
+  | .error message => throw (IO.userError s!"{path}: {message}")
+  | .ok (headerSize, blocks) =>
+    unless headerSize.all (· == digestSize) do
+      throw (IO.userError s!"{path}: expected L = {digestSize}")
+    return blocks
 
 /-- Hex character to its 0–15 nibble value. -/
 private def hexCharToNibble? (c : Char) : Option Nat :=

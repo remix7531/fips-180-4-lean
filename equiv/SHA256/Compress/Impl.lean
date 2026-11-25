@@ -1,12 +1,11 @@
+import equiv.Common.Loop
 import equiv.SHA256.Lift
 import equiv.SHA256.Functions
-import equiv.SHA256.Constants
-import equiv.SHA256.Foldl.Fused
-import Mathlib.Tactic.IntervalCases
+import equiv.SHA256.Foldl.Model
 
 /-! # Compression equivalence — implementation-side factoring
 
-The implementation's `compress` is imperative; this file recasts it as
+The implementation's `compress` unrolls its rounds. This file recasts it as
 a pure `Fin.foldl 64` (`implCompressFoldl`), proves the agreement with
 `Impl.compress` via a `RoundState ↔ (Block, State)` fold-homomorphism
 (`impl_compress_eq_foldl`), and proves the per-step bridge lemmas that
@@ -18,11 +17,10 @@ of the 64-round induction) so that `MatchAfter_step` in
 `Compress/Match.lean` can call them directly without case-splitting
 inline. -/
 
-open SHS.Equiv.SHA256.Bridge
 open SHS.Equiv.SHA256.Lift
 open SHS.Equiv.SHA256.Functions
 open SHS.Equiv.SHA256.Foldl.Schedule
-open SHS.Equiv.SHA256.Foldl.Sequential
+open SHS.Equiv.Loop
 
 open SHS.SHA256
 
@@ -46,14 +44,14 @@ def implScheduleStep (i : Fin 64) (block : Impl.Block) : Impl.Block × UInt32 :=
   if hi : i.val < 16 then
     (block, block[i.val]'hi)
   else
-    let w15 := block[(i.val - 15) % 16]'(by omega)
+    let w15 := block[(i.val - 15) % 16]'(mod16_lt _)
     let s0  := (Impl.UInt32.rotr w15 7) ^^^ (Impl.UInt32.rotr w15 18) ^^^ (w15 >>> 3)
-    let w2  := block[(i.val - 2) % 16]'(by omega)
+    let w2  := block[(i.val - 2) % 16]'(mod16_lt _)
     let s1  := (Impl.UInt32.rotr w2 17) ^^^ (Impl.UInt32.rotr w2 19) ^^^ (w2 >>> 10)
-    let w16 := block[(i.val - 16) % 16]'(by omega)
-    let w7  := block[(i.val - 7) % 16]'(by omega)
+    let w16 := block[(i.val - 16) % 16]'(mod16_lt _)
+    let w7  := block[(i.val - 7) % 16]'(mod16_lt _)
     let new := w16 + s0 + w7 + s1
-    (block.set ((i.val) % 16) new (by omega), new)
+    (block.set (i.val % 16) new (mod16_lt _), new)
 
 /-- One round body on the impl side: mix the schedule word `w` into the
 eight working variables. -/
@@ -95,20 +93,18 @@ def implCompressFoldl (state : Impl.State) (block : Impl.Block) : Impl.State :=
   let (_, s') := Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)
   Vector.zipWith (· + ·) state s'
 
-/-- Used in `impl_compress_eq_foldl` to convert `implCompressFoldl`'s
-`Vector.zipWith` epilogue into the same 8-element literal shape as
-`impl_compress_eq_foldl_form`'s reduction of `Impl.compress`. -/
+/-- Match the pointwise hash addition used by `Impl.compress`. -/
 private theorem zipWith_add_eq_mk (state s' : Impl.State) :
     Vector.zipWith (· + ·) state s' =
       #v[ state[0] + s'[0], state[1] + s'[1], state[2] + s'[2], state[3] + s'[3],
           state[4] + s'[4], state[5] + s'[5], state[6] + s'[6], state[7] + s'[7] ] := by
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> simp
+  rw [← Vector.ofFn_getElem (xs := Vector.zipWith (· + ·) state s')]
+  simp only [Vector.getElem_zipWith]
+  rfl
 
 /-! ### Bridge to `Impl.compress`'s `RoundState`-shaped fold
 
-`Impl.compress` runs `Fin.foldl 64 Impl.roundStep` over a `RoundState`
+`Impl.compress` unfolds to `Fin.foldl 64 Impl.roundStep` over a `RoundState`
 struct; `implCompressFoldl` runs `Fin.foldl 64 implFusedStep` over a
 `(Block, Vector UInt32 8)` pair.  Both share the same outer
 `Fin.foldl 64` shape, so the bridge is a per-iteration `RoundState ↔
@@ -119,84 +115,36 @@ struct; `implCompressFoldl` runs `Fin.foldl 64 implFusedStep` over a
 private def roundStateToPair (rs : Impl.RoundState) : Impl.Block × Impl.State :=
   (rs.schedule, #v[rs.a, rs.b, rs.c, rs.d, rs.e, rs.f, rs.g, rs.h])
 
-/-- Generic `Fin.foldl` homomorphism: if a per-step morphism `f`
-intertwines two step functions, it intertwines their folds. -/
-private theorem fin_foldl_hom {α β : Type _} : ∀ {n : Nat}
-    (f : α → β) (g : α → Fin n → α) (h : β → Fin n → β),
-    (∀ a i, f (g a i) = h (f a) i) → ∀ (init : α),
-    f (Fin.foldl n g init) = Fin.foldl n h (f init)
-  | 0, _, _, _, _, _ => by simp [Fin.foldl_zero]
-  | m + 1, f, g, h, step_eq, init => by
-    rw [Fin.foldl_succ, Fin.foldl_succ]
-    -- Apply IH at `m` with the new init `g init 0` (which corresponds
-    -- to `h (f init) 0` via `step_eq init 0`).
-    rw [fin_foldl_hom f (fun x (j : Fin m) => g x j.succ)
-                       (fun x (j : Fin m) => h x j.succ)
-          (fun a j => step_eq a j.succ) (g init 0)]
-    rw [step_eq init 0]
-
-/-- One impl round equals one equiv `implFusedStep` after the
-correspondence.  Both bodies have the same structural shape; the
-proof is unfold + `Vector.ext` per indexed slot. -/
+/-- Transport an implementation round to the paired fold state. -/
 private theorem roundStep_corresponds (rs : Impl.RoundState) (i : Fin 64) :
-    roundStateToPair (Impl.roundStep rs i) = implFusedStep i (roundStateToPair rs) := by
-  unfold roundStateToPair Impl.roundStep implFusedStep implScheduleStep implRoundBody
-  apply Prod.ext
-  · -- Block component: identical conditional schedule update.
-    rfl
-  · -- State component: literal 8-vector vs. literal 8-vector.
-    apply Vector.ext
-    intro k hk
-    interval_cases k <;> rfl
+    roundStateToPair (Impl.roundStep rs i) = implFusedStep i (roundStateToPair rs) := rfl
 
-/-- The impl's `Impl.compress` reduces (modulo the `unroll64`/`Fin.foldl`
-codegen-vs-proof equivalence) to a `Fin.foldl 64 Impl.roundStep` over
-`RoundState` followed by the `#v[state[i] + final.field]` hash add. -/
-private theorem impl_compress_eq_foldl_form (state : Impl.State) (block : Impl.Block) :
+/-- The executable compressor folds the round step and adds the final working variables. -/
+theorem compress_eq_roundState_foldl (state : Impl.State) (block : Impl.Block) :
     Impl.compress state block =
       let final := Fin.foldl 64 Impl.roundStep (Impl.RoundState.ofState state block)
-      #v[ state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
-          state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h ] := by
-  unfold Impl.compress
-  simp only [SHS.Impl.Unroll.unroll64_eq_foldl]
+      #v[state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
+         state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h] := by
+  simp only [Impl.compress, SHS.Impl.Unroll.unroll64_eq_foldl]
 
 /-- Public bridge: the impl's `RoundState`-shaped fold equals the
 equiv's `(Block, State)`-shaped fold, plus matching final hash adds. -/
 theorem impl_compress_eq_foldl (state : Impl.State) (block : Impl.Block) :
     implCompressFoldl state block = Impl.compress state block := by
-  rw [impl_compress_eq_foldl_form]
+  rw [compress_eq_roundState_foldl]
   unfold implCompressFoldl
-  -- Apply the fold homomorphism with `f = roundStateToPair`.
-  have h_fold := fin_foldl_hom (n := 64) roundStateToPair
-    Impl.roundStep (fun acc i => implFusedStep i acc)
-    roundStep_corresponds (Impl.RoundState.ofState state block)
-  -- The starting RoundState corresponds to `(block, state)`.
-  have h_init : roundStateToPair (Impl.RoundState.ofState state block) = (block, state) := by
-    unfold roundStateToPair Impl.RoundState.ofState
+  have transported := fin_foldl_transport 64
+    Impl.roundStep (fun acc i => implFusedStep i acc) roundStateToPair
+    (Impl.RoundState.ofState state block) roundStep_corresponds
+  have initial : roundStateToPair (Impl.RoundState.ofState state block) = (block, state) := by
     apply Prod.ext
     · rfl
-    · apply Vector.ext
-      intro k hk
-      interval_cases k <;> rfl
-  rw [h_init] at h_fold
-  -- Destruct the equiv-side fold result and the impl-side `let`-bindings.
-  set final_rs := Fin.foldl 64 Impl.roundStep
-    (Impl.RoundState.ofState state block)
-  set final_pair := Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)
-  show Vector.zipWith (fun x1 x2 => x1 + x2) state final_pair.2 =
-    #v[ state[0] + final_rs.a, state[1] + final_rs.b, state[2] + final_rs.c, state[3] + final_rs.d,
-        state[4] + final_rs.e, state[5] + final_rs.f, state[6] + final_rs.g, state[7] + final_rs.h ]
-  -- `final_pair.2 = #v[final_rs.fields]` by the fold equation.
-  have h_pair_eq : final_pair.2 =
-      #v[final_rs.a, final_rs.b, final_rs.c, final_rs.d,
-         final_rs.e, final_rs.f, final_rs.g, final_rs.h] := by
-    have h := h_fold
-    unfold roundStateToPair at h
-    exact congrArg Prod.snd h.symm
-  rw [h_pair_eq, zipWith_add_eq_mk]
-  apply Vector.ext
-  intro i hi
-  interval_cases i <;> rfl
+    · exact Vector.ofFn_getElem (xs := state)
+  rw [initial] at transported
+  change Vector.zipWith (· + ·) state
+    (Fin.foldl 64 (fun acc i => implFusedStep i acc) (block, state)).2 = _
+  rw [← congrArg Prod.snd transported, zipWith_add_eq_mk]
+  rfl
 
 /-! ## Per-step bridges
 
@@ -204,36 +152,22 @@ Single-round equivalences between impl primitives and their spec
 counterparts.  These are reusable independently of the 64-round
 induction. -/
 
-/-- The initial working variables built from a lifted impl state agree
-with the impl state pointwise.  Base case of the `MatchAfter` invariant
-in `Compress/Match.lean`. -/
-theorem initVars_toSpecState_getElem (state : Impl.State) (k : Fin 8) :
-    (initVars (toSpecState state))[k] = state[k].toBitVec := by
-  simp [initVars, toSpecState, getElem!_pos]
-
--- Note: a per-index round-body equivalence lemma was attempted here but
--- cannot be packaged as a `∀ k : Fin 8` because `fin_cases` /
--- `match k with ⟨0,_⟩ ... ⟨7,_⟩` substitutes `⟨k, _⟩` into the goal,
--- preventing `Vector.getElem_mk` from matching the indexing pattern.
--- The 8-way enumeration therefore lives inline inside `MatchAfter_step`
--- in `Compress/Match.lean`.
-
 /-- Schedule-step value equivalence (extension case `i ≥ 16`).
 Used by `implScheduleStep_value_match` to align the impl's freshly
 computed `W[i]` with the spec's `smallSigma1 + … + smallSigma0 + …`
 formula, given the four ring-buffer entries already match. -/
 theorem implScheduleStep_value_ge_16
     (i : Fin 64) (impl_block : Impl.Block) (W : Schedule) (hi : 16 ≤ i.val)
-    (h2 : (impl_block[(i.val - 2) % 16]'(by omega)).toBitVec = W[i.val - 2]!)
-    (h7 : (impl_block[(i.val - 7) % 16]'(by omega)).toBitVec = W[i.val - 7]!)
-    (h15 : (impl_block[(i.val - 15) % 16]'(by omega)).toBitVec = W[i.val - 15]!)
-    (h16 : (impl_block[(i.val - 16) % 16]'(by omega)).toBitVec = W[i.val - 16]!) :
+    (h2 : (impl_block[(i.val - 2) % 16]'(mod16_lt _)).toBitVec = W[i.val - 2]!)
+    (h7 : (impl_block[(i.val - 7) % 16]'(mod16_lt _)).toBitVec = W[i.val - 7]!)
+    (h15 : (impl_block[(i.val - 15) % 16]'(mod16_lt _)).toBitVec = W[i.val - 15]!)
+    (h16 : (impl_block[(i.val - 16) % 16]'(mod16_lt _)).toBitVec = W[i.val - 16]!) :
     (implScheduleStep i impl_block).2.toBitVec =
       SHS.SHA256.smallSigma1 W[i.val - 2]! + W[i.val - 7]! +
         SHS.SHA256.smallSigma0 W[i.val - 15]! + W[i.val - 16]! := by
   unfold implScheduleStep
-  rw [dif_neg (by omega : ¬ i.val < 16)]
-  simp only [toBitVec_add,
+  rw [dite_eq_right (Nat.not_lt_of_ge hi)]
+  simp only [UInt32.toBitVec_add,
     ← smallSigma1_toBitVec, ← smallSigma0_toBitVec,
     h2, h7, h15, h16]
   ac_rfl
@@ -251,8 +185,17 @@ theorem implScheduleStep_fst_at_self
       (implScheduleStep i impl_block).2 := by
   unfold implScheduleStep
   by_cases hi : i.val < 16
-  · simp only [dif_pos hi]; simp [Nat.mod_eq_of_lt hi]
-  · simp only [dif_neg hi]; simp
+  · simp only [dite_eq_left hi]; simp [Nat.mod_eq_of_lt hi]
+  · simp only [dite_eq_right hi]; simp
+
+/-- A schedule step preserves every ring slot other than its write slot. -/
+theorem implScheduleStep_preserves_other_slot (i : Fin 64) (block : Impl.Block)
+    (slot : Nat) (inBounds : slot < 16) (other : slot ≠ i.val % 16) :
+    (implScheduleStep i block).1[slot]'inBounds = block[slot]'inBounds := by
+  unfold implScheduleStep
+  split
+  · rfl
+  · exact Vector.getElem_set_ne (mod16_lt _) inBounds other.symm
 
 /-- Schedule-step value match (both branches `i.val < 16` and `i.val ≥ 16`):
 the impl's freshly-known schedule word matches the spec's just-written
@@ -264,29 +207,25 @@ theorem implScheduleStep_value_match
     (block₀ impl_block : Impl.Block) (W : Schedule) (n : Nat) (hn : n < 64)
     (huntouched : ∀ k : Fin 16, n ≤ k.val → impl_block[k] = block₀[k])
     (hring : ∀ k < n, n ≤ k + 16 →
-      (impl_block[k % 16]'(by
-        have := Nat.mod_lt k (show 0 < 16 by decide); omega)).toBitVec = W[k]!) :
+      (impl_block[k % 16]'(mod16_lt k)).toBitVec = W[k]!) :
     ((implScheduleStep ⟨n, hn⟩ impl_block).2).toBitVec =
       (specScheduleStep (toSpecBlock block₀) n W)[n]! := by
   by_cases hn16 : n < 16
   · -- Initial case: spec writes `M[n]!`; impl block unchanged.
     unfold implScheduleStep specScheduleStep
-    simp only [dif_pos hn16, if_pos hn16]
-    rw [show impl_block[n] = block₀[n] from huntouched ⟨n, hn16⟩ (le_refl n)]
+    simp only [dite_eq_left hn16, ite_eq_left hn16]
+    rw [show impl_block[n] = block₀[n] from huntouched ⟨n, hn16⟩ (Nat.le_refl n)]
     rw [show (toSpecBlock block₀)[n]! = block₀[n].toBitVec from
         getElem!_toSpecBlock block₀ ⟨n, hn16⟩]
-    rw [getElem!_pos _ n hn]
-    rw [SHS.Equiv.VecBridge.set_bang_eq_set _ _ hn, Vector.getElem_set_self]
+    rw [getElem!_pos _ n hn, Vector.getElem_set!_self]
   · -- Extension case: both sides compute the `smallSigma1/smallSigma0` formula.
-    push Not at hn16
     have h2 := hring (n - 2) (by omega) (by omega)
     have h7 := hring (n - 7) (by omega) (by omega)
     have h15 := hring (n - 15) (by omega) (by omega)
     have h16 := hring (n - 16) (by omega) (by omega)
-    rw [implScheduleStep_value_ge_16 ⟨n, hn⟩ impl_block W hn16 h2 h7 h15 h16]
+    rw [implScheduleStep_value_ge_16 ⟨n, hn⟩ impl_block W (Nat.le_of_not_gt hn16) h2 h7 h15 h16]
     unfold specScheduleStep
-    simp only [if_neg (Nat.not_lt.mpr hn16)]
-    rw [getElem!_pos _ n hn]
-    rw [SHS.Equiv.VecBridge.set_bang_eq_set _ _ hn, Vector.getElem_set_self]
+    simp only [ite_eq_right hn16]
+    rw [getElem!_pos _ n hn, Vector.getElem_set!_self]
 
 end SHS.Equiv.SHA256.Compress.Impl

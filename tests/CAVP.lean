@@ -25,8 +25,21 @@ def byteArrayToHex (bs : ByteArray) : String :=
 
 Each pipeline (spec or impl) is exposed as a `(ByteArray, Nat) → Option String`
 function: takes the raw message bytes plus the bit length declared in the
-vector, returns the lowercase hex digest, or `none` to skip the vector
-(e.g. impl rejecting non-byte-aligned lengths). -/
+vector, and returns the lowercase hex digest if the pipeline supports that
+input. -/
+
+private def digestSizes : List (String × Nat) :=
+  [("SHA1", 20), ("SHA224", 28), ("SHA256", 32), ("SHA384", 48), ("SHA512", 64),
+   ("SHA512_224", 28), ("SHA512_256", 32)]
+
+/-- Algorithm names supported by `computeHash`. -/
+def supportedAlgs : List String :=
+  digestSizes.map Prod.fst
+
+private def digestSize (alg : String) : IO Nat := do
+  let some (_, size) := digestSizes.find? (·.1 == alg)
+    | throw (IO.userError s!"unknown algorithm {alg}")
+  return size
 
 /-- Spec dispatch by algorithm name on a bit-level `Message`. -/
 def computeHash (alg : String) (msg : Message) : Option String :=
@@ -45,6 +58,11 @@ def computeHash (alg : String) (msg : Message) : Option String :=
 /-- Spec hash adapter: truncates `bytes` to `len` bits, then dispatches. -/
 def specHash (alg : String) (bytes : ByteArray) (len : Nat) : Option String :=
   computeHash alg ((bytesToBits bytes).take len)
+
+/-- Spec adapter for the alternate SHA-1 circular schedule. -/
+def specSha1AltHash (bytes : ByteArray) (len : Nat) : Option String :=
+  let msg := (bytesToBits bytes).take len
+  if h : msg.length < 2 ^ 64 then some (toHex (SHA1.sha1_alt msg h)) else none
 
 /-- Convert an impl-side `Vector UInt8 n` digest to a `ByteArray`. -/
 private def vectorToByteArray {n} (d : Vector UInt8 n) : ByteArray :=
@@ -124,44 +142,67 @@ def implSha512_224HashBytes (bytes : ByteArray) : Option ByteArray :=
 
 /-! ## Short/long-message vector runner -/
 
-/-- 1/n pseudo-random sampling: keep when `(i * 2654435761) % n = 0`.
-Multiplier is Knuth's golden-ratio hash constant. -/
+private def requireField (block : Block) (key : String) : Except String String :=
+  match block.find? key with
+  | some value => .ok value
+  | none => .error s!"missing {key}"
+
+private def parseDigest (size : Nat) (field value : String) : Except String ByteArray := do
+  let some bytes := hexToBytes? value | throw s!"invalid {field} hex"
+  unless bytes.size == size do
+    throw s!"expected {field} to contain {size} bytes, got {bytes.size}"
+  return bytes
+
+private def parseVector (size : Nat) (block : Block) :
+    Except String (Nat × ByteArray × String) := do
+  let lenStr ← requireField block "Len"
+  let msgStr ← requireField block "Msg"
+  let mdStr ← requireField block "MD"
+  unless block.fields.size == 3 do throw "unexpected vector field"
+  let some len := lenStr.toNat? | throw s!"invalid Len: {lenStr}"
+  let some bytes := hexToBytes? msgStr | throw "invalid Msg hex"
+  -- CAVP encodes the empty message with the placeholder 00.
+  let bytes := if len == 0 && msgStr == "00" then ByteArray.empty else bytes
+  unless bytes.size == (len + 7) / 8 do
+    throw s!"Len={len} requires {(len + 7) / 8} message bytes, got {bytes.size}"
+  let expected ← parseDigest size "MD" mdStr
+  return (len, bytes, byteArrayToHex expected)
+
+/-- Sample roughly every n-th vector. -/
 private def keepSample (sample : Option Nat) (i : Nat) : Bool :=
   match sample with
   | none   => true
   | some n => (i * 2654435761) % n = 0
 
-/-- Run a short/long-message `.rsp` file against `hash`.  `sample = some n`
-keeps roughly every n-th vector. -/
-def runFile (label : String) (path : System.FilePath)
-    (hash : ByteArray → Nat → Option String) (sample : Option Nat := none)
+private def isPaddingBoundary (alg : String) (len : Nat) : Bool :=
+  if alg == "SHA384" || alg.startsWith "SHA512" then len == 888 || len == 896
+  else len == 440 || len == 448
+
+/-- Run a short or long message file. Sampling always keeps vectors on both sides of
+the algorithm's byte-aligned padding transition. -/
+def runFile (alg label : String) (path : System.FilePath)
+    (hash : ByteArray → Nat → Option String) (sample : Option Nat)
+    (byteAlignedOnly : Bool := false)
     : IO (Nat × Nat) := do
-  let blocks ← RspParser.load path
+  let size ← digestSize alg
+  let blocks ← RspParser.load path size
   let mut passed := 0
   let mut failed := 0
-  let mut idx := 0
-  for block in blocks do
-    let i := idx; idx := idx + 1
-    if !keepSample sample i then continue
-    let some lenStr := block.find? "Len" | continue
-    let some msgStr := block.find? "Msg" | continue
-    let some mdStr  := block.find? "MD"  | continue
-    let len := lenStr.toNat!
-    let bytes ←
-      if len = 0 then pure ByteArray.empty
-      else match hexToBytes? msgStr with
-        | some bs => pure bs
-        | none =>
-          failed := failed + 1
-          IO.eprintln s!"FAIL {label} Len={len}: malformed hex Msg={msgStr}"
-          continue
+  for i in [:blocks.size] do
+    let (len, bytes, expected) ← match parseVector size blocks[i]! with
+      | .ok vector => pure vector
+      | .error message => throw (IO.userError s!"{path}: vector {i + 1}: {message}")
+    if byteAlignedOnly && len % 8 != 0 then continue
+    if !keepSample sample i && !isPaddingBoundary alg len then continue
     match hash bytes len with
-    | none => continue
+    | none => throw (IO.userError s!"{path}: {label} could not hash vector {i + 1}")
     | some actual =>
-      if actual = mdStr then passed := passed + 1
+      if actual = expected then passed := passed + 1
       else
         failed := failed + 1
-        IO.eprintln s!"FAIL {label} Len={len} expected={mdStr} got={actual}"
+        IO.eprintln s!"FAIL {label} Len={len} expected={expected} got={actual}"
+  if passed + failed == 0 then
+    throw (IO.userError s!"{path}: no vectors selected")
   return (passed, failed)
 
 /-! ## Monte-Carlo Test (CAVS §6.4) -/
@@ -181,75 +222,62 @@ def monteCarloIter (hash : ByteArray → Option ByteArray) (seed : ByteArray)
     | some next => a := b; b := c; c := next
   return if ok then some c else none
 
-/-- Run an MCT `.rsp` file: read the seed, then run one outer iteration
-per `MD` block in the file (CAVS standard: 100), chaining each iteration
-into the next.  `sample = some n` keeps the first `1/n` of the chains
-(the chain is sequentially dependent, so sampling truncates rather than
-strides).  The inner 1000-hash count per chain is fixed by CAVS and not
-adjustable. -/
-def runFileMonte (label : String) (path : System.FilePath)
-    (hash : ByteArray → Option ByteArray) (sample : Option Nat := none)
+private def parseMonteSeed (size : Nat) (block : Block) : Except String ByteArray := do
+  let seed ← requireField block "Seed"
+  unless block.fields.size == 1 do throw "unexpected seed field"
+  parseDigest size "Seed" seed
+
+private def parseMonteDigest (size i : Nat) (block : Block) : Except String String := do
+  let count ← requireField block "COUNT"
+  let expected ← requireField block "MD"
+  unless block.fields.size == 2 do throw "unexpected Monte Carlo field"
+  unless count.toNat? == some i do throw s!"expected COUNT = {i}, got {count}"
+  return byteArrayToHex (← parseDigest size "MD" expected)
+
+/-- Run the Monte Carlo chains in order, starting from the seed and using
+each result as the seed of the next chain. Sampling keeps the first
+`1/n` of the chains because each depends on the previous result. -/
+def runFileMonte (alg label : String) (path : System.FilePath)
+    (hash : ByteArray → Option ByteArray) (sample : Option Nat)
     : IO (Nat × Nat) := do
-  let blocks ← RspParser.load path
-  let blocksList := blocks.toList
-  let fileFail (msg : String) : IO (Nat × Nat) := do
-    IO.eprintln s!"FAIL {label} Monte: {msg} ({path})"
-    return (0, 1)
-  let some seedBlock := blocksList.head?       | fileFail "no blocks in file"
-  let some seedHex   := seedBlock.find? "Seed" | fileFail "no Seed in first block"
-  let some seedBytes := hexToBytes? seedHex    | fileFail s!"malformed Seed hex {seedHex}"
-  let allMd := blocksList.filter fun b => (b.find? "MD").isSome
-  let mctBlocks := match sample with
-    | none   => allMd
-    | some n => allMd.take (allMd.length / n)
-  let mut current := seedBytes
+  let size ← digestSize alg
+  let blocks ← RspParser.load path size
+  let some seedBlock := blocks[0]? | throw (IO.userError s!"{path}: missing seed block")
+  let mut current ← match parseMonteSeed size seedBlock with
+    | .ok seed => pure seed
+    | .error message => throw (IO.userError s!"{path}: seed block: {message}")
+  let count := blocks.size - 1
+  let mut digests : Array String := #[]
+  for i in [:count] do
+    match parseMonteDigest size i blocks[i + 1]! with
+    | .ok expected => digests := digests.push expected
+    | .error message => throw (IO.userError s!"{path}: Monte Carlo record {i}: {message}")
+  let selected := count / sample.getD 1
+  if selected == 0 then
+    throw (IO.userError s!"{path}: no Monte Carlo chains selected")
   let mut passed := 0
   let mut failed := 0
-  for block in mctBlocks do
-    let some mdStr := block.find? "MD" | continue
-    match monteCarloIter hash current with
-    | none =>
+  for i in [:selected] do
+    let expected := digests[i]!
+    let some next := monteCarloIter hash current
+      | throw (IO.userError s!"{path}: {label} could not hash Monte Carlo record {i}")
+    current := next
+    let actual := byteArrayToHex current
+    if actual == expected then passed := passed + 1
+    else
       failed := failed + 1
-      IO.eprintln s!"FAIL {label} Monte: hash returned none"
-    | some next =>
-      current := next
-      let actual := byteArrayToHex current
-      if actual = mdStr then passed := passed + 1
-      else
-        failed := failed + 1
-        IO.eprintln s!"FAIL {label} Monte: expected={mdStr} got={actual}"
+      IO.eprintln s!"FAIL {label} COUNT={i} expected={expected} got={actual}"
   return (passed, failed)
 
 /-! ## Negative tests -/
 
-/-- Algorithm names supported by `computeHash`. -/
-def supportedAlgs : List String :=
-  ["SHA1", "SHA224", "SHA256", "SHA384", "SHA512", "SHA512_224", "SHA512_256"]
-
 /-- Negative-test driver: verify the framework rejects what it should
-reject (tampered digest, malformed hex, unknown algorithm), and confirm
+reject (malformed hex, unknown algorithm), and confirm
 basic invariants (determinism, distinct algorithms diverge). -/
 def runNegativeTests : IO (Nat × Nat) := do
   let mut passed := 0
   let mut failed := 0
-  -- 1. Tampered digest per algorithm.
-  for alg in supportedAlgs do
-    match computeHash alg [] with
-    | none =>
-      failed := failed + 1
-      IO.eprintln s!"FAIL negative: {alg} on empty message returned none"
-    | some goodHex =>
-      let tampered :=
-        if goodHex.length > 0 then
-          let c := goodHex.front
-          let flipped := if c = '0' then '1' else '0'
-          flipped.toString ++ goodHex.drop 1
-        else "0"
-      if goodHex = tampered then
-        failed := failed + 1
-        IO.eprintln s!"FAIL negative: {alg} tamper produced equal digest"
-      else passed := passed + 1
-  -- 2a. Empty hex.
+  -- Empty hex.
   match hexToBytes? "" with
   | some bs =>
     if bs.size = 0 then passed := passed + 1
@@ -257,19 +285,19 @@ def runNegativeTests : IO (Nat × Nat) := do
       failed := failed + 1
       IO.eprintln s!"FAIL negative: empty hex parsed to non-empty ({bs.size} bytes)"
   | none => passed := passed + 1
-  -- 2b. Garbage hex.
+  -- Garbage hex.
   match hexToBytes? "not_hex_at_all_zzz!" with
   | none => passed := passed + 1
   | some _ =>
     failed := failed + 1
     IO.eprintln "FAIL negative: garbage hex string was accepted"
-  -- 3. Unknown algorithm name.
+  -- Unknown algorithm name.
   match computeHash "BOGUS_ALG" [] with
   | none => passed := passed + 1
   | some _ =>
     failed := failed + 1
     IO.eprintln "FAIL negative: unknown algorithm produced a digest"
-  -- 4. Determinism.
+  -- Determinism.
   for alg in supportedAlgs do
     let h1 := computeHash alg [false, true, false, true, true, true, false]
     let h2 := computeHash alg [false, true, false, true, true, true, false]
@@ -277,7 +305,7 @@ def runNegativeTests : IO (Nat × Nat) := do
     else
       failed := failed + 1
       IO.eprintln s!"FAIL negative: {alg} not deterministic"
-  -- 5. Distinct algorithms diverge: every unordered pair is a separate check.
+  -- Each unordered pair of algorithms is a separate check.
   let digests : List (String × String) := supportedAlgs.filterMap fun alg =>
     (computeHash alg []).map (alg, ·)
   for (alg1, h1) in digests do
@@ -289,36 +317,14 @@ def runNegativeTests : IO (Nat × Nat) := do
         else passed := passed + 1
   return (passed, failed)
 
-/-! ## Test cases -/
-
-/-- Spec-side short/long-message vector files, one pair per algorithm. -/
-def specCases (dir : String) : List (String × String) :=
-  supportedAlgs.flatMap fun alg =>
-    [(alg, s!"{dir}/{alg}ShortMsg.rsp"), (alg, s!"{dir}/{alg}LongMsg.rsp")]
-
-/-- Spec-side Monte-Carlo Test files. -/
-def specMonteCases (dir : String) : List (String × String) :=
-  supportedAlgs.map fun alg => (alg, s!"{dir}/{alg}Monte.rsp")
-
-/-- Impl-side short/long-message vector files for SHA-256. -/
-def implCases (dir : String) : List String :=
-  [s!"{dir}/SHA256ShortMsg.rsp", s!"{dir}/SHA256LongMsg.rsp"]
-
-/-- Impl-side short/long-message vector files for SHA-224. -/
-def implCases224 (dir : String) : List String :=
-  [s!"{dir}/SHA224ShortMsg.rsp", s!"{dir}/SHA224LongMsg.rsp"]
-
-/-- Impl-side short/long-message vector files for SHA-512. -/
-def implCases512 (dir : String) : List String :=
-  [s!"{dir}/SHA512ShortMsg.rsp", s!"{dir}/SHA512LongMsg.rsp"]
-
-def implCases384 (dir : String) : List String :=
-  [s!"{dir}/SHA384ShortMsg.rsp", s!"{dir}/SHA384LongMsg.rsp"]
-
-def implCases512_256 (dir : String) : List String :=
-  [s!"{dir}/SHA512_256ShortMsg.rsp", s!"{dir}/SHA512_256LongMsg.rsp"]
-
-def implCases512_224 (dir : String) : List String :=
-  [s!"{dir}/SHA512_224ShortMsg.rsp", s!"{dir}/SHA512_224LongMsg.rsp"]
+/-- Algorithms with executable hash adapters for message vectors and Monte Carlo tests. -/
+def implCases : List
+    (String × (ByteArray → Nat → Option String) × (ByteArray → Option ByteArray)) :=
+  [("SHA256", implSha256Hash, implSha256HashBytes),
+   ("SHA224", implSha224Hash, implSha224HashBytes),
+   ("SHA512", implSha512Hash, implSha512HashBytes),
+   ("SHA384", implSha384Hash, implSha384HashBytes),
+   ("SHA512_256", implSha512_256Hash, implSha512_256HashBytes),
+   ("SHA512_224", implSha512_224Hash, implSha512_224HashBytes)]
 
 end tests.CAVP

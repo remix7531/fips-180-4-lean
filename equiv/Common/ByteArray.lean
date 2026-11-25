@@ -1,101 +1,44 @@
-import Batteries.Data.ByteArray
-
-/-! # Common: `ByteArray.get!` lemmas
-
-`ByteArray.get!` distribution over `++`, `push`, and `appendZeros`.
-The matching `getElem` lemmas exist in core / Batteries; we restate
-at `get!` for proofs that operate on padded bytes by index. -/
+/-! # Common: byte-array padding and indexing -/
 
 namespace SHS.Equiv.ByteArray
 
 /-- Append `n` zero bytes to a `ByteArray`. -/
 def appendZeros (bs : ByteArray) (n : Nat) : ByteArray :=
-  Nat.rec bs (motive := fun _ => ByteArray) (fun _ acc => acc.push 0) n
+  bs ++ ⟨Array.replicate n 0⟩
 
 @[simp] theorem size_appendZeros (bs : ByteArray) (n : Nat) :
     (appendZeros bs n).size = bs.size + n := by
-  induction n with
-  | zero => rfl
-  | succ k ih =>
-    show ((appendZeros bs k).push 0).size = bs.size + (k + 1)
-    rw [ByteArray.size_push, ih]; omega
+  rw [appendZeros, ByteArray.size_append]
+  change bs.size + (Array.replicate n (0 : UInt8)).size = _
+  rw [Array.size_replicate]
 
-/-- `get!` agrees with `getElem` whenever the index is in range. -/
-theorem get!_eq_getElem (a : ByteArray) (n : Nat) (h : n < a.size) :
-    a.get! n = a[n]'h := by
-  unfold ByteArray.get!
-  simp
-  rw [getElem!_pos]
-  rfl
+/-- Convert the implementation's `ByteArray.get!` to the indexing notation
+used by the standard library. -/
+theorem get!_eq_getElem! (a : ByteArray) (i : Nat) : a.get! i = a[i]! := by
+  by_cases h : i < a.size
+  · rw [getElem!_pos a i h, ByteArray.getElem_eq_getElem_data]
+    exact getElem!_pos a.data i h
+  · rw [getElem!_neg a i h]
+    exact getElem!_neg a.data i h
 
-/-- Index into the left summand of a `ByteArray.append`. -/
-theorem get!_append_left (a b : ByteArray) (n : Nat) (h : n < a.size) :
-    (a ++ b).get! n = a.get! n := by
-  rw [get!_eq_getElem _ _ h,
-      get!_eq_getElem _ _ (by rw [ByteArray.size_append]; omega)]
-  exact ByteArray.get_append_left h
-
-/-- Index into the right summand of a `ByteArray.append`. -/
-theorem get!_append_right (a b : ByteArray) (n : Nat)
-    (hle : a.size ≤ n) (h : n - a.size < b.size) :
-    (a ++ b).get! n = b.get! (n - a.size) := by
-  rw [get!_eq_getElem _ _ (by rw [ByteArray.size_append]; omega),
-      get!_eq_getElem _ _ h]
-  exact ByteArray.get_append_right hle (by rw [ByteArray.size_append]; omega)
-
-/-- Index below the size of `a` is unaffected by `push`. -/
-theorem get!_push_lt (a : ByteArray) (b : UInt8) (n : Nat) (h : n < a.size) :
-    (a.push b).get! n = a.get! n := by
-  rw [get!_eq_getElem _ _ (by rw [ByteArray.size_push]; omega),
-      get!_eq_getElem _ _ h]
-  exact ByteArray.get_push_lt a b n h
-
-/-- The newly pushed byte is found at the old size. -/
-theorem get!_push_eq (a : ByteArray) (b : UInt8) :
-    (a.push b).get! a.size = b := by
-  rw [get!_eq_getElem _ _ (by rw [ByteArray.size_push]; omega)]
-  exact ByteArray.get_push_eq a b
-
-/-- Indexing inside the original prefix of `appendZeros` is unaffected. -/
-theorem get!_appendZeros_lt (bs : ByteArray) (n i : Nat) (h : i < bs.size) :
-    (appendZeros bs n).get! i = bs.get! i := by
-  induction n with
-  | zero => rfl
-  | succ k ih =>
-    show ((appendZeros bs k).push 0).get! i = bs.get! i
-    have hsz : i < (appendZeros bs k).size := by
-      rw [size_appendZeros]; omega
-    rw [get!_push_lt _ _ _ hsz, ih]
-
-/-- Indexing into the appended-zeros suffix returns `0`. -/
-theorem get!_appendZeros_ge (bs : ByteArray) (n i : Nat)
-    (h1 : bs.size ≤ i) (h2 : i < bs.size + n) :
-    (appendZeros bs n).get! i = 0 := by
-  induction n with
-  | zero => omega
-  | succ k ih =>
-    show ((appendZeros bs k).push 0).get! i = 0
-    by_cases hk : i < bs.size + k
-    · have hsz : i < (appendZeros bs k).size := by
-        rw [size_appendZeros]; omega
-      rw [get!_push_lt _ _ _ hsz]
-      exact ih hk
-    · have heq : i = (appendZeros bs k).size := by
-        rw [size_appendZeros]; omega
-      rw [heq, get!_push_eq]
-
-/-- The underlying `Array`'s list length equals the `ByteArray`'s size. -/
-theorem data_toList_length (bs : ByteArray) :
-    bs.data.toList.length = bs.size := by
-  rw [Array.length_toList]
-  rfl
-
-/-- `bs.get! n`, for in-range `n`, equals the underlying list's `n`-th element. -/
-theorem get!_eq_toList_getElem (bs : ByteArray) (n : Nat)
-    (h : n < bs.size) :
-    bs.get! n = bs.data.toList[n]'(by
-      rw [data_toList_length bs]; exact h) := by
-  rw [get!_eq_getElem _ _ h, ByteArray.getElem_eq_getElem_data]
-  exact (Array.getElem_toList h).symm
+/-- Byte access across the data, separator, zero padding, and length field. -/
+theorem get!_append_padding (data lengthField : ByteArray) (zeros pos : Nat) :
+    (appendZeros (data.push 0x80) zeros ++ lengthField).get! pos =
+      (if pos < data.size then data.get! pos
+       else if pos = data.size then 0x80
+       else if pos < data.size + 1 + zeros then 0
+       else lengthField.get! (pos - (data.size + 1 + zeros))) := by
+  simp only [appendZeros, ByteArray.get!, ByteArray.data_append, ByteArray.data_push,
+    getElem!_def, Array.getElem?_append, Array.getElem?_push, Array.getElem?_replicate,
+    Array.size_append, Array.size_push, Array.size_replicate, ByteArray.size_data]
+  by_cases hPrefix : pos < data.size + 1 + zeros
+  · rw [ite_eq_left hPrefix]
+    by_cases hData : pos < data.size
+    · simp [hData, Nat.ne_of_lt hData, show pos < data.size + 1 by omega]
+    · by_cases hSeparator : pos = data.size
+      · simp [hSeparator]
+      · simp [hData, hSeparator, hPrefix, show ¬ pos < data.size + 1 by omega,
+          show pos - (data.size + 1) < zeros by omega]
+  · simp [hPrefix, show ¬ pos < data.size by omega, show pos ≠ data.size by omega]
 
 end SHS.Equiv.ByteArray

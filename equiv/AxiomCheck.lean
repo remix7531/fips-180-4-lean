@@ -1,32 +1,30 @@
 import equiv.SHA256.Main
 import equiv.SHA512.Main
+import Lean.Elab.Command
+import Lean.Util.CollectAxioms
 
 /-! # Axiom regression gate
 
-Pins the axiom set the public correctness theorems depend on.  If the
-build fails here, a new axiom has been introduced — review the change
-deliberately and update the pinned messages below. -/
+Each public correctness theorem must depend on exactly the three
+classical axioms below.
+-/
 
-/-- info: 'SHS.Equiv.SHA256.sha256_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA256.sha256_correct
-
-/-- info: 'SHS.Equiv.SHA256.compress_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA256.compress_correct
-
-/-- info: 'SHS.Equiv.SHA256.sha224_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA256.sha224_correct
-
-/-- info: 'SHS.Equiv.SHA512.sha512_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA512.sha512_correct
-
-/-- info: 'SHS.Equiv.SHA512.compress_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA512.compress_correct
-
-/-- info: 'SHS.Equiv.SHA512.sha384_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA512.sha384_correct
-
-/-- info: 'SHS.Equiv.SHA512.sha512_256_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA512.sha512_256_correct
-
-/-- info: 'SHS.Equiv.SHA512.sha512_224_correct' depends on axioms: [propext, Classical.choice, Quot.sound] -/
-#guard_msgs in #print axioms SHS.Equiv.SHA512.sha512_224_correct
+open Lean Elab Command in
+run_cmd do
+  let expected := #[``propext, ``Classical.choice, ``Quot.sound]
+  let declarations := #[
+    ``SHS.Equiv.SHA256.sha256_correct,
+    ``SHS.Equiv.SHA256.compress_correct,
+    ``SHS.Equiv.SHA256.sha224_correct,
+    ``SHS.Equiv.SHA512.sha512_correct,
+    ``SHS.Equiv.SHA512.compress_correct,
+    ``SHS.Equiv.SHA512.sha384_correct,
+    ``SHS.Equiv.SHA512.sha512_256_correct,
+    ``SHS.Equiv.SHA512.sha512_224_correct
+  ]
+  for theoremName in declarations do
+    let actual ← collectAxioms theoremName
+    let added := actual.filter (fun name => !expected.contains name)
+    let removed := expected.filter (fun name => !actual.contains name)
+    unless added.isEmpty && removed.isEmpty do
+      logError m!"Axiom set changed for {theoremName}. Added {added}. Removed {removed}."

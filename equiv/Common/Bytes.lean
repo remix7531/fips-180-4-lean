@@ -1,8 +1,8 @@
+import equiv.Common.FromBits
+
 /-! # Common: byte ↔ bit utilities
 
-Canonical `byteToBits` (one byte → eight MSB-first booleans) plus
-length / drop / take lemmas about `List.flatMap byteToBits`.  Pure
-list / `UInt8` content; reused by SHA-512. -/
+Defines `byteToBits` and proves its packing, length, and slicing laws. -/
 
 namespace SHS.Equiv.Bytes
 
@@ -16,6 +16,12 @@ def byteToBits (b : UInt8) : List Bool :=
 theorem byteToBits_length (b : UInt8) : (byteToBits b).length = 8 := by
   simp [byteToBits]
 
+theorem flatMap_byteToBits_length (l : List UInt8) :
+    (l.flatMap byteToBits).length = 8 * l.length := by
+  simp only [List.length_flatMap, byteToBits_length]
+  change (l.map (Function.const UInt8 8)).sum = _
+  rw [List.map_const, List.sum_replicate_nat, Nat.mul_comm]
+
 /-- Bridge between `UInt8.toNat.testBit` (used by `byteToBits`) and
 `BitVec.getLsbD` (the form `bv_decide` understands).  Lets every
 `Word.fromBits ∘ byteToBits` proof translate the bit-list goal into
@@ -25,6 +31,21 @@ contexts that prefer to keep `Nat.testBit` as the canonical form. -/
 theorem UInt8.toNat_testBit_eq_getLsbD (b : UInt8) (i : Nat) :
     b.toNat.testBit i = b.toBitVec.getLsbD i := by
   rw [show b.toNat = b.toBitVec.toNat from rfl, BitVec.testBit_toNat]
+
+/-- Packing a byte's bits gives its bit vector resized to the requested width. -/
+theorem fromBits_byteToBits {width : Nat} (byte : UInt8) :
+    SHS.Word.fromBits (n := width) (byteToBits byte) = byte.toBitVec.setWidth width := by
+  rw [FromBits.fromBits_eq_ofBoolListBE]
+  congr 1
+  apply BitVec.eq_of_getMsbD_eq
+  intro index hIndex
+  rw [BitVec.getMsbD_ofBoolListBE]
+  change (byteToBits byte).getD index false = byte.toBitVec.getMsbD index
+  have hByteIndex : index < 8 := by simpa only [byteToBits_length] using hIndex
+  rw [BitVec.getMsbD_eq_getLsbD, List.getD_eq_getElem?_getD, List.getElem?_eq_getElem hIndex]
+  simp only [hByteIndex, decide_true, Bool.true_and, byteToBits, Option.getD_some,
+    List.getElem_map, List.getElem_reverse, List.length_range, List.getElem_range,
+    UInt8.toNat_testBit_eq_getLsbD]
 
 /-- Dropping `8 * k` bits from `l.flatMap byteToBits` is the same as
 dropping `k` bytes from `l` first.  Used to slice the bit-list view of a

@@ -115,8 +115,8 @@ def parse (M : Message) : Array Block :=
   -- Split into 512-bit blocks, then split each block into sixteen 32-bit words.
   -- A spec-conforming input padded by §5.1.1 yields exactly 16 words per block;
   -- the `getD 0` total fallback only fires on malformed (mis-padded) input.
-  M.toChunks 512 |>.toArray |>.map fun b =>
-    let words := b.toChunks 32 |>.map Word.fromBits |>.toArray
+  listChunks 512 M |>.toArray |>.map fun b =>
+    let words := listChunks 32 b |>.map Word.fromBits |>.toArray
     Vector.ofFn (n := 16) fun i => words[i]?.getD 0
 
 end SHA256 --#
@@ -147,8 +147,8 @@ def parse (M : Message) : Array Block :=
   -- Split into 1024-bit blocks, then split each block into sixteen 64-bit words.
   -- A spec-conforming input padded by §5.1.2 yields exactly 16 words per block;
   -- the `getD 0` total fallback only fires on malformed (mis-padded) input.
-  M.toChunks 1024 |>.toArray |>.map fun b =>
-    let words := b.toChunks 64 |>.map Word.fromBits |>.toArray
+  listChunks 1024 M |>.toArray |>.map fun b =>
+    let words := listChunks 64 b |>.map Word.fromBits |>.toArray
     Vector.ofFn (n := 16) fun i => words[i]?.getD 0
 
 end SHA512 --#

@@ -1,8 +1,4 @@
 --#--
-import Mathlib.Data.Nat.Find
-import Mathlib.Data.Nat.ModEq
-import Mathlib.Logic.Basic
-import Batteries.Data.List.Basic
 
 -- TODO: input preconditions are not yet encoded in the Lean signatures.
 -- The spec text constrains `0 ≤ n < w` for `Notation.ROTR`/`ROTL`/`SHR` and
@@ -51,6 +47,8 @@ scoped notation:max "¬" a:40 => Complement.complement a
 scoped infixl:75 " << " => HShiftLeft.hShiftLeft
 /-- FIPS-180-4 right shift. -/
 scoped infixl:75 " >> " => HShiftRight.hShiftRight
+/-- Congruence of natural numbers modulo a natural number. -/
+scoped notation:50 a " ≡ " b " [MOD " n "]" => Nat.mod a n = Nat.mod b n
 
 /-- `min { k < n | p k }` — the smallest `k` in `[0, n)` satisfying `p`, or `0` if none. -/
 syntax "min " "{" ident " < " term " | " term "}" : term
@@ -69,20 +67,28 @@ def Message.fromString (s : String) : List Bool :=
 def Word.fromBits {n : Nat} (bits : List Bool) : BitVec n :=
   bits.foldl (fun acc b => acc <<< 1 ||| (if b then 1 else 0)) 0
 
+/-- Split a list into consecutive chunks, including any final partial chunk.
+Width zero keeps a nonempty input in one chunk. -/
+def listChunks {α : Type _} (width : Nat) (items : List α) : List (List α) :=
+  match width, items with
+  | _, [] => []
+  | 0, items => [items]
+  | width + 1, items => go width items #[]
+where
+  go (width : Nat) (items : List α) (chunks : Array (List α)) : List (List α) :=
+    match items with
+    | [] => chunks.toList
+    | item :: rest =>
+      let parts := rest.splitAt width
+      go width parts.2 (chunks.push (item :: parts.1))
+  termination_by items.length
+  decreasing_by
+    simp only [List.splitAt_eq, List.length_drop, List.length_cons]
+    omega
+
 /-- The left-most `n` bits of an `m`-bit vector. -/
 def _root_.BitVec.leftmost (n : Nat) {m : Nat} (x : BitVec m) : BitVec n :=
   x.extractLsb' (m - n) n
-
-/-- Numeric literals elaborate as the `H0_t` argument subtype when the
-    spec's three clauses hold. Lets `H0_t 224` elide the `⟨224, …⟩` noise.
-    The `.isFalse` arm is a sentinel reachable only for invalid literals
-    (e.g. `H0_t 384`); it returns `⟨1, _⟩` so elaboration succeeds, but the
-    resulting digest is meaningless. -/
-instance (n : Nat) [h : Decidable (0 < n ∧ n < 512 ∧ n ≠ 384)] :
-    OfNat {t : Nat // 0 < t ∧ t < 512 ∧ t ≠ 384} n where
-  ofNat := match h with
-    | .isTrue p => ⟨n, p⟩
-    | .isFalse _ => ⟨1, by decide⟩
 
 end SHS
 

@@ -1,14 +1,12 @@
 import impl.SHA512
-import spec.HashAlgorithms
+import spec.Notation
 
 /-!
 # `UInt64` ↔ `BitVec 64` operator bridge
 
-Parallel to `equiv/SHA256/Bridge.lean` at 64-bit width.  `UInt64` is a
-one-field structure wrapping `BitVec 64`, so the pointwise bridges are
-all `rfl`; the shift and rotation bridges carry a `n.toNat < 64`
-hypothesis discharged from literal rotation counts at the callsites in
-`Functions.lean`.
+This module relates the SHA-512 implementation's shifts and rotations on
+`UInt64` to the spec's `BitVec 64` operations. Lean core provides the
+pointwise bitwise and arithmetic bridges through `UInt64.toBitVec`.
 
 ## Operator-notation map (spec ↔ equiv/impl)
 
@@ -22,33 +20,13 @@ bitwise operators on `UInt64`, which is what the Lean core provides for
 machine-word types:
 
   equiv  ^^^  &&&  ~~~
-
-Both denote the same bit operations; the `toBitVec_{xor,and,not}`
-lemmas in this file (and the `_toBitVec` family in `Functions.lean`)
-are the bridges that line them up. -/
+-/
 
 open SHS.SHA512
 
 namespace SHS.Equiv.SHA512.Bridge
 
 open SHS
-
-/-! ## Pointwise bitwise / arithmetic bridges
-
-All four are `rfl` because `UInt64` is a one-field structure over
-`BitVec 64` and the corresponding instances forward through that field. -/
-
-@[simp] theorem toBitVec_xor (x y : UInt64) :
-    (x ^^^ y).toBitVec = x.toBitVec ^^^ y.toBitVec := rfl
-
-@[simp] theorem toBitVec_and (x y : UInt64) :
-    (x &&& y).toBitVec = x.toBitVec &&& y.toBitVec := rfl
-
-@[simp] theorem toBitVec_not (x : UInt64) :
-    (~~~ x).toBitVec = ~~~ x.toBitVec := rfl
-
-@[simp] theorem toBitVec_add (x y : UInt64) :
-    (x + y).toBitVec = x.toBitVec + y.toBitVec := rfl
 
 /-! ## Shift bridges
 
@@ -61,7 +39,6 @@ on the underlying bitvector. -/
 theorem toBitVec_shr_of_lt (x : UInt64) (n : UInt64) (h : n.toNat < 64) :
     (x >>> n).toBitVec = x.toBitVec >>> n.toNat := by
   rw [UInt64.toBitVec_shiftRight, BitVec.ushiftRight_eq', BitVec.toNat_umod]
-  congr 1
   simp [Nat.mod_eq_of_lt h]
 
 /-- For an in-range shift amount, `UInt64.<<<` agrees with `BitVec.<<<`
@@ -69,21 +46,14 @@ on the underlying bitvector.  Companion to `toBitVec_shr_of_lt`. -/
 theorem toBitVec_shl_of_lt (x : UInt64) (n : UInt64) (h : n.toNat < 64) :
     (x <<< n).toBitVec = x.toBitVec <<< n.toNat := by
   rw [UInt64.toBitVec_shiftLeft, BitVec.shiftLeft_eq', BitVec.toNat_umod]
-  congr 1
   simp [Nat.mod_eq_of_lt h]
 
 /-! ## Rotation bridges
 
-`Impl.UInt64.rotr` is defined directly via primitive `UInt64` shift/or
-ops (for codegen efficiency).  The bridge to `BitVec.rotateRight` goes
-via Lean core's `BitVec.rotateRight_def`.  All callsites (the four
-`_toBitVec` lemmas in `Functions.lean`, plus `ROTR_eq_u64_rotr`)
-discharge `n.toNat < 64` from a literal `n`. -/
+The rotation proof uses `BitVec.rotateRight_def`. Both shift amounts must
+be in range to remove the implicit reduction modulo 64. -/
 
-/-- For `n.toNat < 64`, `Impl.UInt64.rotr` agrees with `BitVec.rotateRight`
-on the underlying bitvector.  The bound is essential: for `n.toNat ≥ 64`
-the impl rotr (using primitive `UInt64` shifts which mask the amount via
-`% 2^64`) diverges from the recursive `BitVec.rotateRightAux`. -/
+/-- A positive rotation below 64 agrees with `BitVec.rotateRight`. -/
 theorem toBitVec_rotr (x : UInt64) (n : UInt64) (h0 : 0 < n.toNat) (h : n.toNat < 64) :
     (Impl.UInt64.rotr x n).toBitVec = x.toBitVec.rotateRight n.toNat := by
   unfold Impl.UInt64.rotr
@@ -98,9 +68,7 @@ theorem toBitVec_rotr (x : UInt64) (n : UInt64) (h0 : 0 < n.toNat) (h : n.toNat 
 /-- For `n < 64`, the spec's `SHS.ROTR n` matches `BitVec.rotateRight n`. -/
 theorem ROTR_eq_rotateRight (n : Nat) (x : BitVec 64) (h : n < 64) :
     SHS.ROTR n x = x.rotateRight n := by
-  unfold SHS.ROTR
   rw [BitVec.rotateRight_eq_rotateRightAux_of_lt h]
-  unfold BitVec.rotateRightAux
   rfl
 
 /-! ## SHR bridge -/

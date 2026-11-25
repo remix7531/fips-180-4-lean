@@ -1,0 +1,6 @@
+# RFC 6234, section 8.5, SHA-512 test 5.
+[L = 64]
+
+Len = 5
+Msg = b0
+MD = d4ee29a9e90985446b913cf1d1376c836f4be2c1cf3cada0720a6bf4857d886a7ecb3c4e4c0fa8c7f95214e41dc1b0d21b22a84cc03bf8ce4845f34dd5bdbad4

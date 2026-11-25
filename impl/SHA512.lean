@@ -1,3 +1,5 @@
+import impl.Unroll
+
 /-!
 # SHA-512 family — performance-tuned implementation
 
@@ -129,6 +131,24 @@ abbrev Block := Vector UInt64 16
 /-- 80-word expanded message schedule (FIPS 180-4 §6.4.2 step 1). -/
 abbrev Schedule := Vector UInt64 80
 
+/-- The schedule ring and the eight working variables for one round. -/
+structure RoundState where
+  schedule : Block
+  a : UInt64
+  b : UInt64
+  c : UInt64
+  d : UInt64
+  e : UInt64
+  f : UInt64
+  g : UInt64
+  h : UInt64
+
+/-- Initialize the working variables from the hash state and the ring from the block. -/
+@[inline] def RoundState.ofState (state : State) (block : Block) : RoundState :=
+  { schedule := block
+    a := state[0], b := state[1], c := state[2], d := state[3]
+    e := state[4], f := state[5], g := state[6], h := state[7] }
+
 /-! ## §5.2.2  Byte-level decode -/
 
 /-- One big-endian `UInt64` from a 128-byte `Vector` block at word index `i`. -/
@@ -167,9 +187,7 @@ abbrev Schedule := Vector UInt64 80
 
 /-! ## §6.4  Compression -/
 
-/-- FIPS 180-4 §6.4.2 step 1: 80-word message schedule.  First 16 slots
-copy the block; slots 16..79 satisfy
-`W[i] = W[i-16] + σ₀(W[i-15]) + W[i-7] + σ₁(W[i-2])`. -/
+/-- The full message schedule for the sequential proof model. -/
 def messageSchedule (block : Block) : Schedule := Id.run do
   let mut w : Schedule := Vector.replicate 80 0
   for h : i in [0:16] do
@@ -182,34 +200,33 @@ def messageSchedule (block : Block) : Schedule := Id.run do
     w := w.set i (w[i - 16] + s0 + w[i - 7] + s1)
   pure w
 
-/-- FIPS 180-4 §6.4.2 steps 2–4: 80-round block compression. -/
-def compress (state : State) (block : Block) : State := Id.run do
-  let w := messageSchedule block
-  let mut a := state[0]
-  let mut b := state[1]
-  let mut c := state[2]
-  let mut d := state[3]
-  let mut e := state[4]
-  let mut f := state[5]
-  let mut g := state[6]
-  let mut h := state[7]
-  for h : i in [0:80] do
-    let s1 := (UInt64.rotr e 14) ^^^ (UInt64.rotr e 18) ^^^ (UInt64.rotr e 41)
-    let ch := (e &&& f) ^^^ ((~~~ e) &&& g)
-    let t1 := s1 + ch + K64[i] + w[i] + h
-    let s0 := (UInt64.rotr a 28) ^^^ (UInt64.rotr a 34) ^^^ (UInt64.rotr a 39)
-    let mj := (a &&& b) ^^^ (a &&& c) ^^^ (b &&& c)
-    let t2 := s0 + mj
-    h := g
-    g := f
-    f := e
-    e := d + t1
-    d := c
-    c := b
-    b := a
-    a := t1 + t2
-  pure #v[ state[0] + a, state[1] + b, state[2] + c, state[3] + d,
-           state[4] + e, state[5] + f, state[6] + g, state[7] + h ]
+/-- Read the next block word or replace the oldest schedule word in the ring. -/
+@[inline] def scheduleStep (ring : Block) (i : Fin 80) : Block × UInt64 :=
+  if hi : i.val < 16 then
+    (ring, ring[i.val]'hi)
+  else
+    let w16 := ring[(i.val - 16) % 16]'(by omega)
+    let w15 := ring[(i.val - 15) % 16]'(by omega)
+    let w7 := ring[(i.val - 7) % 16]'(by omega)
+    let w2 := ring[(i.val - 2) % 16]'(by omega)
+    let word := w16 + smallSigma0 w15 + w7 + smallSigma1 w2
+    (ring.set (i.val % 16) word (by omega), word)
+
+/-- Extend the schedule at the current index and mix that word into the working variables. -/
+@[inline] def roundStep (working : RoundState) (i : Fin 80) : RoundState :=
+  let (ring, word) := scheduleStep working.schedule i
+  let t1 := bigSigma1 working.e + Ch working.e working.f working.g + K64[i] + word + working.h
+  let t2 := bigSigma0 working.a + Maj working.a working.b working.c
+  { schedule := ring
+    a := t1 + t2, b := working.a, c := working.b, d := working.c
+    e := working.d + t1, f := working.e, g := working.f, h := working.g }
+
+/-- FIPS 180-4 section 6.4.2 block compression. Unrolling specializes each ring access
+and round constant to its literal index. -/
+def compress (state : State) (block : Block) : State :=
+  let final := SHS.Impl.Unroll.unroll80 roundStep (RoundState.ofState state block)
+  #v[state[0] + final.a, state[1] + final.b, state[2] + final.c, state[3] + final.d,
+     state[4] + final.e, state[5] + final.f, state[6] + final.g, state[7] + final.h]
 
 /-! ## §6.4–6.7  Top-level digests
 
@@ -264,24 +281,21 @@ encode without wrap.  Inside the verified region the panic branch is
 unreachable. -/
 def sha512 (data : ByteArray) : Vector UInt8 64 :=
   if 2 ^ 61 ≤ data.size then
-    panic! s!"SHS.SHA512.Impl.sha512: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+    panic! s!"SHS.SHA512.Impl.sha512: input size {data.size} bytes must be below 2^61 bytes"
   else digestExtract (sha512State data H0_512) (by decide)
 
 /-- Streaming-padded SHA-384 (FIPS 180-4 §6.5).  Same compression core
 as SHA-512, different IV (`H0_384`), 48-byte left-most truncation. -/
 def sha384 (data : ByteArray) : Vector UInt8 48 :=
   if 2 ^ 61 ≤ data.size then
-    panic! s!"SHS.SHA512.Impl.sha384: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+    panic! s!"SHS.SHA512.Impl.sha384: input size {data.size} bytes must be below 2^61 bytes"
   else digestExtract (sha512State data H0_384) (by decide)
 
 /-- Streaming-padded SHA-512/256 (FIPS 180-4 §6.7).  Different IV
 (`H0_512_256`), 32-byte left-most truncation (word boundary). -/
 def sha512_256 (data : ByteArray) : Vector UInt8 32 :=
   if 2 ^ 61 ≤ data.size then
-    panic! s!"SHS.SHA512.Impl.sha512_256: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+    panic! s!"SHS.SHA512.Impl.sha512_256: input size {data.size} bytes must be below 2^61 bytes"
   else digestExtract (sha512State data H0_512_256) (by decide)
 
 /-- Streaming-padded SHA-512/224 (FIPS 180-4 §6.6).  Different IV
@@ -289,8 +303,7 @@ def sha512_256 (data : ByteArray) : Vector UInt8 32 :=
 4 bytes are the high half of word 3). -/
 def sha512_224 (data : ByteArray) : Vector UInt8 28 :=
   if 2 ^ 61 ≤ data.size then
-    panic! s!"SHS.SHA512.Impl.sha512_224: input size {data.size} bytes exceeds \
-              FIPS 180-4 §5.1.2 limit (2^61 bytes)"
+    panic! s!"SHS.SHA512.Impl.sha512_224: input size {data.size} bytes must be below 2^61 bytes"
   else digestExtract (sha512State data H0_512_224) (by decide)
 
 end SHS.SHA512.Impl

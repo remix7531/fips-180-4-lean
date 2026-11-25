@@ -1,0 +1,6 @@
+# RFC 6234, section 8.5, SHA-1 test 5.
+[L = 20]
+
+Len = 5
+Msg = 98
+MD = 29826b003b906e660eff4027ce98af3531ac75ba

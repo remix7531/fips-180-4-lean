@@ -3,7 +3,6 @@ import spec.Setup
 import equiv.SHA512.Bridge
 import equiv.SHA512.Lift
 import equiv.Common.Bytes
-import Mathlib.Tactic.IntervalCases
 
 /-!
 # Per-block byte → word lift bridge (SHA-512)
@@ -38,69 +37,28 @@ def eightBytesBits (bytes : Vector UInt8 128) (i : Fin 16) : List Bool :=
   byteToBits (bytes[8 * i.val + 6]'(by omega)) ++
   byteToBits (bytes[8 * i.val + 7]'(by omega))
 
-/-- Selector lemma: extracting the `k`-th LSB of `if x then 1 else 0`
-yields `x` at `k = 0` and `false` elsewhere.  Stated parametrically in
-`N` because both width `8` (per byte) and width `64` (per word) need it. -/
-private theorem getLsbD_ifBit (N : Nat) (x : Bool) (k : Nat) :
-    (if x = true then (1 : BitVec N) else 0).getLsbD k =
-      (decide (0 < N) && decide (k = 0) && x) := by
-  cases x <;> simp [BitVec.getLsbD_one]
-
-/-- `Word.fromBits` of one byte's MSB-first bit list equals the byte's
-underlying `BitVec 8`.  Same as SHA-256's `fromBits_byteToBits` — same
-proof, the input is just one byte and is width-agnostic. -/
-theorem fromBits_byteToBits (b : UInt8) :
-    (SHS.Word.fromBits (n := 8) (byteToBits b)) = b.toBitVec := by
-  unfold byteToBits SHS.Word.fromBits
-  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.map_cons, List.map_nil, List.foldl,
-    UInt8.toNat_testBit_eq_getLsbD]
-  apply BitVec.eq_of_getLsbD_eq
-  intro i hi
-  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
-  interval_cases i <;> simp
-
--- Like `fromBits_8bytes_BE_64` in `Digest.lean`, this proof ends in a
--- 64-way `interval_cases k <;> simp` enumerating every bit position.  At
--- 64 bits each `simp` closes a small but non-trivial `getLsbD` goal, so
--- the default 200k-heartbeat budget is too tight.
-set_option maxHeartbeats 800000 in
-/-- Per-word bridge: impl `beU64` decode equals spec `Word.fromBits`
-over the 64 MSB-first bits of the same eight bytes. -/
+/-- `beU64` packs the same eight bytes in the same order as `Word.fromBits`. -/
 theorem beU64_eq_fromBits (bytes : Vector UInt8 128) (i : Fin 16) :
     (Impl.beU64 bytes i).toBitVec =
       SHS.Word.fromBits (n := 64) (eightBytesBits bytes i) := by
-  unfold Impl.beU64 eightBytesBits byteToBits SHS.Word.fromBits
-  generalize bytes[8 * i.val]'(by omega) = b0
-  generalize bytes[8 * i.val + 1]'(by omega) = b1
-  generalize bytes[8 * i.val + 2]'(by omega) = b2
-  generalize bytes[8 * i.val + 3]'(by omega) = b3
-  generalize bytes[8 * i.val + 4]'(by omega) = b4
-  generalize bytes[8 * i.val + 5]'(by omega) = b5
-  generalize bytes[8 * i.val + 6]'(by omega) = b6
-  generalize bytes[8 * i.val + 7]'(by omega) = b7
-  simp only [List.range, List.range.loop, List.reverse_cons, List.reverse_nil,
-    List.nil_append, List.cons_append, List.map_cons, List.map_nil,
-    List.foldl, UInt8.toNat_testBit_eq_getLsbD]
-  apply BitVec.eq_of_getLsbD_eq
-  intro k hk
-  simp only [BitVec.getLsbD_or, BitVec.getLsbD_shiftLeft, getLsbD_ifBit]
-  interval_cases k <;> simp
+  unfold Impl.beU64 eightBytesBits
+  simp (discharger := decide) only [FromBits.fromBits_append_same_width, fromBits_byteToBits,
+    byteToBits_length, UInt64.toBitVec_or, toBitVec_shl_of_lt, UInt8.toBitVec_toUInt64,
+    BitVec.or_assoc]
+  simp only [BitVec.shiftLeft_or_distrib, ← BitVec.shiftLeft_add, Nat.reduceAdd, BitVec.or_assoc]
+  rfl
 
 /-! ## Block-level bridge
 
 The 16-way assembly: `toSpecBlock (Impl.toU64s block)` matches the
-spec's per-block parse (`(bits.toChunks 64).map Word.fromBits |>.toArray`)
+spec's per-block parse (`(listChunks 64 bits).map Word.fromBits |>.toArray`)
 over the corresponding 1024 bits. -/
 
 /-- Bits of a 128-byte block as a single 1024-element MSB-first list. -/
 def blockToBits (block : Vector UInt8 128) : List Bool :=
   block.toList.flatMap byteToBits
 
-/-- Per-word bridge: the `i`-th word of `toSpecBlock (Impl.toU64s block)`
-equals `Word.fromBits` of the `i`-th 64-bit slice.  Same structure as
-the SHA-256 parallel: project via `getElem!_toSpecBlock`, reduce
-`Vector.ofFn` then close by `beU64_eq_fromBits`. -/
+/-- The indexed word packs the bytes read by the implementation decoder. -/
 theorem toSpecBlock_toU64s_index (block : Vector UInt8 128) (i : Fin 16) :
     (toSpecBlock (Impl.toU64s block))[i.val]! =
       SHS.Word.fromBits (n := 64) (eightBytesBits block i) := by
@@ -109,6 +67,25 @@ theorem toSpecBlock_toU64s_index (block : Vector UInt8 128) (i : Fin 16) :
   rw [show (Vector.ofFn (fun i => Impl.beU64 block i))[i] = Impl.beU64 block i from
     Vector.getElem_ofFn (i := i.val) i.isLt]
   exact beU64_eq_fromBits block i
+
+/-- The explicit byte reads in a word form a contiguous slice of the block. -/
+private theorem eightBytesBits_eq_slice (block : Vector UInt8 128) (index : Fin 16) :
+    eightBytesBits block index =
+      ((block.toList.drop (8 * index.val)).take 8).flatMap byteToBits := by
+  have wordFits : 8 * index.val + 8 ≤ 128 := by omega
+  simp (discharger := (simp only [List.length_drop, Vector.length_toList]; omega))
+    only [eightBytesBits, List.take_succ_eq_append_getElem, List.take_zero, List.getElem_drop,
+      List.flatMap_append, List.flatMap_cons, List.flatMap_nil, List.nil_append, List.append_nil,
+      Vector.getElem_toList, Nat.add_zero, List.append_assoc]
+
+/-- Each decoded word packs one contiguous word-sized slice of the block bits. -/
+theorem toSpecBlock_toU64s_slice (block : Vector UInt8 128) (index : Fin 16) :
+    (toSpecBlock (Impl.toU64s block))[index.val]! =
+      SHS.Word.fromBits (n := 64)
+        (((blockToBits block).drop (index.val * 64)).take 64) := by
+  rw [toSpecBlock_toU64s_index, eightBytesBits_eq_slice, blockToBits]
+  rw [show index.val * 64 = 8 * (8 * index.val) by omega, show 64 = 8 * 8 from rfl,
+    flatMap_byteToBits_drop_8, flatMap_byteToBits_take_8]
 
 /-! ## Fast `ByteArray`-direct path
 
