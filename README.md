@@ -38,6 +38,8 @@ bash scripts/build-html.sh
 `lake build` defaults to `spec`. `lake test` runs the full suite.
 `lake test -- --fast` samples it. See the [proof checks](equiv/README.md#verification).
 
+`nix build` builds the Lean package and runs the sampled suite.
+
 ## Coverage and trust base
 
 The `impl/` implementation and `equiv/` proofs cover the entire SHA-2
