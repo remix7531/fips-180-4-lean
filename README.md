@@ -65,4 +65,4 @@ cover bugs in the Lean compiler, C toolchain, or runtime.
 
 ## License
 
-GPL-3.0-or-later.
+LGPL-3.0-or-later. See [LICENSE](LICENSE).
